@@ -1,12 +1,14 @@
-
 from django.urls import path, include
 from django.conf.urls.static import static
 from django.conf import settings
 from django.contrib import admin
+from django.shortcuts import redirect
+
 
 
 
 urlpatterns = [
+    path('', lambda request: redirect('ver_eventos'), name='root_redirect'),
     path('admin-django/', admin.site.urls),
     path('admin/', include('app_admin.urls')),
     path('participante/', include('app_participantes.urls')),
@@ -15,7 +17,6 @@ urlpatterns = [
     path('admin-evento/', include('app_administradores.urls')),
     path('evento/', include('app_eventos.urls')),
     path('usuario/', include('app_usuarios.urls')),
-    
 ]
 
 

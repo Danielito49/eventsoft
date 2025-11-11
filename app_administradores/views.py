@@ -71,6 +71,17 @@ def crear_evento(request):
         fecha_fin = request.POST.get('fecha_fin')
         capacidad = request.POST.get('capacidad')
         tienecosto = request.POST.get('tienecosto')
+        tipo = request.POST.get('tipo', 'publico')
+        es_multidisciplinario = request.POST.get('es_multidisciplinario', 'No')
+        
+        # Asignar inscripciones automáticamente según el tipo
+        if tipo == 'publico':
+            inscripcion_evaluadores = 'Si'
+            inscripcion_participantes = 'Si'
+        else:  # restringido
+            inscripcion_evaluadores = 'No'
+            inscripcion_participantes = 'No'
+            
         imagen = request.FILES.get('imagen')
         programacion = request.FILES.get('programacion')
 
@@ -116,6 +127,10 @@ def crear_evento(request):
             eve_imagen=imagen,
             eve_capacidad=capacidad,
             eve_tienecosto=tienecosto,
+            eve_tipo=tipo,
+            eve_es_multidisciplinario=es_multidisciplinario,
+            eve_inscripcion_evaluadores=inscripcion_evaluadores,
+            eve_inscripcion_participantes=inscripcion_participantes,
             eve_administrador_fk=administrador,
             eve_programacion=programacion
         )
@@ -184,6 +199,16 @@ def modificar_evento(request, eve_id):
         evento.eve_fecha_fin = request.POST['fecha_fin']
         evento.eve_capacidad = int(request.POST['capacidad'])
         evento.eve_tienecosto = request.POST['tienecosto']
+        evento.eve_tipo = request.POST.get('tipo', 'publico')
+        evento.eve_es_multidisciplinario = request.POST.get('es_multidisciplinario', 'No')
+        
+        # Asignar inscripciones automáticamente según el tipo
+        if evento.eve_tipo == 'publico':
+            evento.eve_inscripcion_evaluadores = 'Si'
+            evento.eve_inscripcion_participantes = 'Si'
+        else:  # restringido
+            evento.eve_inscripcion_evaluadores = 'No'
+            evento.eve_inscripcion_participantes = 'No'
 
         if 'imagen' in request.FILES:
             evento.eve_imagen = request.FILES['imagen']
@@ -382,6 +407,54 @@ def reabrir_inscripciones(request, eve_id):
         messages.success(request, "Las inscripciones fueron reabiertas exitosamente.")
     else:
         messages.error(request, "El evento no está en estado 'inscripciones cerradas' o no existe.")
+    return redirect(reverse('listar_eventos'))
+
+@login_required
+@user_passes_test(es_administrador_evento, login_url='ver_eventos')
+def cerrar_inscripcion_evaluadores(request, eve_id):
+    evento = get_object_or_404(Evento, eve_id=eve_id)
+    if evento.eve_tipo == 'publico' and evento.eve_inscripcion_evaluadores == 'Si':
+        evento.eve_inscripcion_evaluadores = 'No'
+        evento.save()
+        messages.success(request, "Las inscripciones de evaluadores se cerraron correctamente.")
+    else:
+        messages.error(request, "No se pueden cerrar las inscripciones de evaluadores para este evento.")
+    return redirect(reverse('listar_eventos'))
+
+@login_required
+@user_passes_test(es_administrador_evento, login_url='ver_eventos')
+def abrir_inscripcion_evaluadores(request, eve_id):
+    evento = get_object_or_404(Evento, eve_id=eve_id)
+    if evento.eve_tipo == 'publico' and evento.eve_inscripcion_evaluadores == 'No':
+        evento.eve_inscripcion_evaluadores = 'Si'
+        evento.save()
+        messages.success(request, "Las inscripciones de evaluadores fueron reabiertas exitosamente.")
+    else:
+        messages.error(request, "No se pueden abrir las inscripciones de evaluadores para este evento.")
+    return redirect(reverse('listar_eventos'))
+
+@login_required
+@user_passes_test(es_administrador_evento, login_url='ver_eventos')
+def cerrar_inscripcion_participantes(request, eve_id):
+    evento = get_object_or_404(Evento, eve_id=eve_id)
+    if evento.eve_tipo == 'publico' and evento.eve_inscripcion_participantes == 'Si':
+        evento.eve_inscripcion_participantes = 'No'
+        evento.save()
+        messages.success(request, "Las inscripciones de participantes se cerraron correctamente.")
+    else:
+        messages.error(request, "No se pueden cerrar las inscripciones de participantes para este evento.")
+    return redirect(reverse('listar_eventos'))
+
+@login_required
+@user_passes_test(es_administrador_evento, login_url='ver_eventos')
+def abrir_inscripcion_participantes(request, eve_id):
+    evento = get_object_or_404(Evento, eve_id=eve_id)
+    if evento.eve_tipo == 'publico' and evento.eve_inscripcion_participantes == 'No':
+        evento.eve_inscripcion_participantes = 'Si'
+        evento.save()
+        messages.success(request, "Las inscripciones de participantes fueron reabiertas exitosamente.")
+    else:
+        messages.error(request, "No se pueden abrir las inscripciones de participantes para este evento.")
     return redirect(reverse('listar_eventos'))
 
 @login_required

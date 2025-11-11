@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% load static %}
+{% block extra_meta %}
+<!-- Token CSRF para peticiones AJAX de EventSoft -->
+<meta name="csrf-token" content="{{ csrf_token }}">
+{% endblock %}
 {% block content %}
 
 <style>
@@ -233,6 +237,20 @@
         color: var(--text-muted);
         margin-bottom: 0.25rem;
     }
+    
+    .inscription-option {
+        padding: 1rem;
+        border: 1px solid #e9ecef;
+        border-radius: 12px;
+        background: white;
+        box-shadow: var(--shadow-subtle);
+    }
+    
+    .inscription-option h6 {
+        color: var(--secondary-color);
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
 
     .back-btn {
         position: absolute;
@@ -427,7 +445,7 @@
         <div class="cta-section">
             <h3 class="cta-title">¡Únete!</h3>
             <p class="cta-description">
-                Regístrate como asistente. 
+                Regístrate en el evento.
                 {% if evento.eve_tienecosto == True or evento.eve_tienecosto == 1 or evento.eve_tienecosto == "SI" %}
                     Recibirás instrucciones de pago.
                 {% else %}
@@ -435,16 +453,45 @@
                 {% endif %}
             </p>
 
-            {% if evento.eve_estado == "Inscripciones Cerradas" %}
-                <button class="btn-custom btn-disabled" disabled>
-                    <i class="bi bi-lock"></i>
-                    Cerrado
-                </button>
-            {% else %}
-                <a href="{% url 'inscripcion_asistente' evento.eve_id %}" class="btn-custom btn-primary-custom">
-                    <i class="bi bi-person-plus"></i>
-                    Inscribirme
+            <!-- Inscripción como Asistente -->
+            <div class="inscription-option mb-3">
+                <h6><i class="bi bi-person-check"></i> Como Asistente</h6>
+                <p class="text-muted small">Asiste y participa en el evento sin presentar trabajos.</p>
+                {% if evento.eve_estado == "Inscripciones Cerradas" %}
+                    <button class="btn-custom btn-disabled" disabled>
+                        <i class="bi bi-lock"></i>
+                        Cerrado
+                    </button>
+                {% else %}
+                    <a href="{% url 'inscripcion_asistente' evento.eve_id %}" class="btn-custom btn-primary-custom">
+                        <i class="bi bi-person-plus"></i>
+                        Inscribirme como Asistente
+                    </a>
+                {% endif %}
+            </div>
+
+            <!-- Inscripción como Evaluador (solo si está habilitada) -->
+            {% if evento.eve_inscripcion_evaluadores == 'Si' %}
+            <div class="inscription-option mb-3">
+                <h6><i class="bi bi-clipboard-check"></i> Como Evaluador</h6>
+                <p class="text-muted small">Evalúa trabajos presentados en el evento.</p>
+                <a href="{% url 'inscripcion_evaluador_directo' evento.eve_id %}" class="btn-custom btn-secondary-custom">
+                    <i class="bi bi-clipboard-plus"></i>
+                    Inscribirme como Evaluador
                 </a>
+            </div>
+            {% endif %}
+
+            <!-- Inscripción como Participante (solo si está habilitada) -->
+            {% if evento.eve_inscripcion_participantes == 'Si' %}
+            <div class="inscription-option mb-3">
+                <h6><i class="bi bi-trophy"></i> Como Participante</h6>
+                <p class="text-muted small">Presenta trabajos para ser evaluados en el evento.</p>
+                <a href="{% url 'inscripcion_participante_directo' evento.eve_id %}" class="btn-custom btn-outline-success-custom">
+                    <i class="bi bi-file-earmark-plus"></i>
+                    Inscribirme como Participante
+                </a>
+            </div>
             {% endif %}
 
             {% if evento.eve_programacion %}
@@ -519,12 +566,39 @@
 </div>
 
 <script>
+// Función helper para obtener token CSRF
+function obtenerTokenCSRF() {
+    // Buscar en meta tag (recomendado)
+    const metaToken = document.querySelector('meta[name=csrf-token]');
+    if (metaToken) {
+        return metaToken.getAttribute('content');
+    }
+    
+    // Buscar en input hidden (fallback)
+    const inputToken = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (inputToken) {
+        return inputToken.value;
+    }
+    
+    // Buscar en cookie (alternativa)
+    const cookies = document.cookie.split(';');
+    for (let cookie of cookies) {
+        const [nombre, valor] = cookie.trim().split('=');
+        if (nombre === 'csrftoken') {
+            return valor;
+        }
+    }
+    
+    console.error('EventSoft: Token CSRF no encontrado');
+    return null;
+}
+
 let datosCompartirVisitante = {};
 
 function compartirEventoVisitante(eventoId, nombreEvento) {
-    console.log('Compartiendo evento como visitante:', eventoId, nombreEvento);
+    console.log('EventSoft: Compartiendo evento como visitante:', eventoId, nombreEvento);
     
-    // Mostrar loading
+    // Mostrar loading en modal
     const modalElement = document.getElementById('modalCompartirVisitante');
     const modal = new bootstrap.Modal(modalElement);
     
@@ -533,37 +607,48 @@ function compartirEventoVisitante(eventoId, nombreEvento) {
     
     modal.show();
     
-    // Hacer petición para obtener información del evento
+    // Obtener token CSRF
+    const csrfToken = obtenerTokenCSRF();
+    if (!csrfToken) {
+        document.getElementById('mensajeCompartirVisitante').value = 'Error de seguridad. Por favor recarga la página e intenta de nuevo.';
+        return;
+    }
+    
+    // Hacer petición con token CSRF incluido
     fetch(`/evento/${eventoId}/compartir/`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'X-Requested-With': 'XMLHttpRequest'
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': csrfToken  // Token CSRF requerido
         }
     })
     .then(response => {
-        console.log('Response status:', response.status);
+        console.log('EventSoft: Response status:', response.status);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         return response.json();
     })
     .then(data => {
-        console.log('Datos recibidos:', data);
+        console.log('EventSoft: Datos recibidos:', data);
         if (data.success) {
             datosCompartirVisitante = data;
             document.getElementById('mensajeCompartirVisitante').value = data.mensaje;
         } else {
-            throw new Error(data.error || 'Error desconocido');
+            throw new Error(data.error || 'Error desconocido del servidor');
         }
     })
     .catch(error => {
-        console.error('Error completo:', error);
+        console.error('EventSoft: Error al compartir evento:', error);
         document.getElementById('mensajeCompartirVisitante').value = 'Error al cargar la información del evento. Por favor intenta de nuevo.';
+        
+        // Datos de fallback para mantener funcionalidad básica
         datosCompartirVisitante = {
-            mensaje: 'Error al cargar información',
+            mensaje: `🎉 ¡Descubre este increíble evento!\n\n📅 ${nombreEvento}\n\nℹ️ Más información: ${window.location.href}`,
             url: window.location.href,
-            titulo: nombreEvento
+            titulo: `Evento: ${nombreEvento}`,
+            evento_nombre: nombreEvento
         };
     });
 }
@@ -571,52 +656,71 @@ function compartirEventoVisitante(eventoId, nombreEvento) {
 function copiarMensajeVisitante() {
     const textarea = document.getElementById('mensajeCompartirVisitante');
     textarea.select();
-    textarea.setSelectionRange(0, 99999); // Para móviles
+    textarea.setSelectionRange(0, 99999); // Para dispositivos móviles
     
     navigator.clipboard.writeText(textarea.value).then(function() {
-        // Mostrar feedback
+        // Mostrar feedback visual
         const btn = event.target.closest('button');
-        const originalText = btn.innerHTML;
+        const textoOriginal = btn.innerHTML;
         btn.innerHTML = '<i class="bi bi-check me-2"></i>¡Copiado!';
         btn.classList.remove('btn-success');
         btn.classList.add('btn-outline-success');
         
+        // Restaurar estado original después de 2 segundos
         setTimeout(() => {
-            btn.innerHTML = originalText;
+            btn.innerHTML = textoOriginal;
             btn.classList.remove('btn-outline-success');
             btn.classList.add('btn-success');
         }, 2000);
+    }).catch(function(error) {
+        console.error('EventSoft: Error al copiar al portapapeles:', error);
+        // Fallback para navegadores sin soporte
+        textarea.select();
+        try {
+            document.execCommand('copy');
+            console.log('EventSoft: Copiado usando execCommand (fallback)');
+        } catch (fallbackError) {
+            console.error('EventSoft: Error en fallback de copia:', fallbackError);
+            alert('No se pudo copiar automáticamente. Por favor selecciona el texto y copia manualmente.');
+        }
     });
 }
 
 function compartirWhatsAppVisitante() {
-    console.log('Compartir WhatsApp con datos:', datosCompartirVisitante);
+    console.log('EventSoft: Compartir en WhatsApp con datos:', datosCompartirVisitante);
     if (datosCompartirVisitante.mensaje) {
         const mensaje = encodeURIComponent(datosCompartirVisitante.mensaje);
-        const url = `https://wa.me/?text=${mensaje}`;
-        console.log('URL WhatsApp:', url);
-        window.open(url, '_blank');
+        const urlWhatsApp = `https://wa.me/?text=${mensaje}`;
+        console.log('EventSoft: Abriendo WhatsApp:', urlWhatsApp);
+        window.open(urlWhatsApp, '_blank', 'noopener,noreferrer');
     } else {
+        console.error('EventSoft: No hay mensaje disponible para WhatsApp');
         alert('Error: No hay mensaje para compartir. Por favor intenta de nuevo.');
     }
 }
 
 function compartirFacebookVisitante() {
-    console.log('Compartir Facebook con datos:', datosCompartirVisitante);
+    console.log('EventSoft: Compartir en Facebook con datos:', datosCompartirVisitante);
     if (datosCompartirVisitante.url) {
-        const url = encodeURIComponent(datosCompartirVisitante.url);
-        window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, '_blank');
+        const urlFacebook = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(datosCompartirVisitante.url)}`;
+        console.log('EventSoft: Abriendo Facebook:', urlFacebook);
+        window.open(urlFacebook, '_blank', 'noopener,noreferrer');
     } else {
+        console.error('EventSoft: No hay URL disponible para Facebook');
         alert('Error: No hay URL para compartir. Por favor intenta de nuevo.');
     }
 }
 
 function compartirXVisitante() {
-    console.log('Compartir X con datos:', datosCompartirVisitante);
+    console.log('EventSoft: Compartir en X (Twitter) con datos:', datosCompartirVisitante);
     if (datosCompartirVisitante.titulo && datosCompartirVisitante.url) {
-        const texto = encodeURIComponent(`${datosCompartirVisitante.titulo} - ${datosCompartirVisitante.url}`);
-        window.open(`https://twitter.com/intent/tweet?text=${texto}`, '_blank');
+        const textoCompleto = `${datosCompartirVisitante.titulo} - ${datosCompartirVisitante.url}`;
+        const textoLimitado = textoCompleto.length > 280 ? textoCompleto.substring(0, 277) + '...' : textoCompleto;
+        const urlTwitter = `https://twitter.com/intent/tweet?text=${encodeURIComponent(textoLimitado)}`;
+        console.log('EventSoft: Abriendo X (Twitter):', urlTwitter);
+        window.open(urlTwitter, '_blank', 'noopener,noreferrer');
     } else {
+        console.error('EventSoft: No hay información disponible para X (Twitter)');
         alert('Error: No hay información para compartir. Por favor intenta de nuevo.');
     }
 }

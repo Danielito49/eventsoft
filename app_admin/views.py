@@ -20,7 +20,9 @@ from app_evaluadores.models import Evaluador, EvaluadorEvento
 from app_administradores.models import CodigoInvitacionEvento
 from app_eventos.models import ConfiguracionCertificado
 from app_eventos.models import EventoCategoria
-
+from app_asistentes.models import AsistenteEvento
+from app_participantes.models import ParticipanteEvento
+from app_evaluadores.models import EvaluadorEvento, Criterio, Calificacion
 
 
 
@@ -204,52 +206,194 @@ def crear_codigo_invitacion_admin(request):
                 messages.error(request, e)
             return render(request, 'crear_codigo_invitacion_admin.html')
 
-        # Validar que no exista un código activo para ese correo
-        if CodigoInvitacionAdminEvento.objects.filter(email_destino=email_destino, estado='activo').exists():
-            messages.error(request, 'Ya existe un código activo para ese correo.')
-            return render(request, 'crear_codigo_invitacion_admin.html')
-
-        # Generar código único
-        codigo = str(uuid.uuid4()).replace('-', '')[:32]
+        # Verificar si el usuario ya existe en el sistema
         try:
-            fecha_exp = timezone.datetime.fromisoformat(fecha_expiracion)
-        except Exception:
-            messages.error(request, 'Formato de fecha de expiración inválido.')
-            return render(request, 'crear_codigo_invitacion_admin.html')
+            usuario_existente = Usuario.objects.get(email=email_destino)
+            
+            # Verificar si tiene el rol de administrador_evento
+            rol_admin = Rol.objects.get(nombre='administrador_evento')
+            tiene_rol_admin = RolUsuario.objects.filter(usuario=usuario_existente, rol=rol_admin).exists()
+            
+            if tiene_rol_admin:
+                # Usuario ya tiene rol de administrador, verificar códigos existentes
+                codigo_activo = CodigoInvitacionAdminEvento.objects.filter(
+                    email_destino=email_destino, 
+                    estado='activo'
+                ).first()
+                
+                if codigo_activo:
+                    # Sumar al límite existente
+                    codigo_activo.limite_eventos += int(limite_eventos)
+                    codigo_activo.save()
+                    
+                    # Enviar correo de actualización
+                    asunto = 'Actualización de límite de eventos - Administrador de Evento'
+                    mensaje = f"""
+                    Tu límite de eventos como Administrador de Evento ha sido actualizado en Eventsoft.<br><br>
+                    Se han agregado {limite_eventos} evento(s) adicionales a tu código existente.<br>
+                    Límite total actual: <b>{codigo_activo.limite_eventos} eventos</b><br><br>
+                    Tu código de invitación sigue siendo: <b>{codigo_activo.codigo}</b><br>
+                    """
+                    
+                    # Enviar correo inmediatamente
+                    email = EmailMessage(asunto, mensaje, to=[email_destino])
+                    email.content_subtype = 'html'
+                    try:
+                        email.send()
+                        messages.success(request, f'Límite actualizado. El usuario ya tenía un código activo y se le agregaron {limite_eventos} eventos más. Correo enviado.')
+                    except Exception as e:
+                        messages.success(request, f'Límite actualizado. El usuario ya tenía un código activo y se le agregaron {limite_eventos} eventos más.')
+                        messages.error(request, f'Error al enviar el correo: {e}')
+                else:
+                    # No tiene código activo, crear uno nuevo
+                    try:
+                        fecha_exp = timezone.datetime.fromisoformat(fecha_expiracion)
+                    except Exception:
+                        messages.error(request, 'Formato de fecha de expiración inválido.')
+                        return render(request, 'crear_codigo_invitacion_admin.html')
 
-        tiempo_limite = None
-        if tiempo_limite_creacion:
-            try:
-                tiempo_limite = timezone.datetime.fromisoformat(tiempo_limite_creacion)
-            except Exception:
-                messages.error(request, 'Formato de fecha/hora para el tiempo límite de creación inválido.')
+                    tiempo_limite = None
+                    if tiempo_limite_creacion:
+                        try:
+                            tiempo_limite = timezone.datetime.fromisoformat(tiempo_limite_creacion)
+                        except Exception:
+                            messages.error(request, 'Formato de fecha/hora para el tiempo límite de creación inválido.')
+                            return render(request, 'crear_codigo_invitacion_admin.html')
+
+                    codigo = str(uuid.uuid4()).replace('-', '')[:32]
+                    codigo_obj = CodigoInvitacionAdminEvento.objects.create(
+                        codigo=codigo,
+                        email_destino=email_destino,
+                        limite_eventos=int(limite_eventos),
+                        fecha_expiracion=fecha_exp,
+                        tiempo_limite_creacion=tiempo_limite,
+                        usuario_asignado=usuario_existente
+                    )
+                    
+                    # Enviar correo de nuevo código
+                    asunto = 'Nuevo código de invitación - Administrador de Evento'
+                    mensaje = f"""
+                    Se te ha asignado un nuevo código de invitación como Administrador de Evento en Eventsoft.<br><br>
+                    Tu nuevo código de invitación: <b>{codigo}</b><br>
+                    Este código permite crear hasta {limite_eventos} evento(s) y expira el {fecha_exp.strftime('%d/%m/%Y %H:%M')}.<br>
+                    """
+                    
+                    # Enviar correo inmediatamente
+                    email = EmailMessage(asunto, mensaje, to=[email_destino])
+                    email.content_subtype = 'html'
+                    try:
+                        email.send()
+                        messages.success(request, 'Nuevo código creado para administrador existente. Correo enviado.')
+                    except Exception as e:
+                        messages.success(request, 'Nuevo código creado para administrador existente.')
+                        messages.error(request, f'Error al enviar el correo: {e}')
+            else:
+                # Usuario existe pero no tiene rol de administrador, asignárselo
+                RolUsuario.objects.create(usuario=usuario_existente, rol=rol_admin)
+                
+                # Crear o actualizar registro AdministradorEvento
+                admin_evento, created = AdministradorEvento.objects.get_or_create(usuario=usuario_existente)
+                
+                # Crear código de invitación
+                try:
+                    fecha_exp = timezone.datetime.fromisoformat(fecha_expiracion)
+                except Exception:
+                    messages.error(request, 'Formato de fecha de expiración inválido.')
+                    return render(request, 'crear_codigo_invitacion_admin.html')
+
+                tiempo_limite = None
+                if tiempo_limite_creacion:
+                    try:
+                        tiempo_limite = timezone.datetime.fromisoformat(tiempo_limite_creacion)
+                    except Exception:
+                        messages.error(request, 'Formato de fecha/hora para el tiempo límite de creación inválido.')
+                        return render(request, 'crear_codigo_invitacion_admin.html')
+
+                codigo = str(uuid.uuid4()).replace('-', '')[:32]
+                codigo_obj = CodigoInvitacionAdminEvento.objects.create(
+                    codigo=codigo,
+                    email_destino=email_destino,
+                    limite_eventos=int(limite_eventos),
+                    fecha_expiracion=fecha_exp,
+                    tiempo_limite_creacion=tiempo_limite,
+                    usuario_asignado=usuario_existente
+                )
+                
+                # Enviar correo de asignación de rol
+                asunto = 'Asignación como Administrador de Evento'
+                mensaje = f"""
+                ¡Felicitaciones! Has sido asignado como Administrador de Evento en Eventsoft.<br><br>
+                Tu código de invitación: <b>{codigo}</b><br>
+                Este código permite crear hasta {limite_eventos} evento(s) y expira el {fecha_exp.strftime('%d/%m/%Y %H:%M')}.<br><br>
+                Ya tienes acceso al sistema con tu cuenta actual.
+                """
+                
+                # Enviar correo inmediatamente
+                email = EmailMessage(asunto, mensaje, to=[email_destino])
+                email.content_subtype = 'html'
+                try:
+                    email.send()
+                    messages.success(request, 'Rol de administrador asignado a usuario existente y código creado. Correo enviado.')
+                except Exception as e:
+                    messages.success(request, 'Rol de administrador asignado a usuario existente y código creado.')
+                    messages.error(request, f'Error al enviar el correo: {e}')
+            
+        except Usuario.DoesNotExist:
+            # Usuario no existe, comportamiento original
+            # Validar que no exista un código activo para ese correo
+            if CodigoInvitacionAdminEvento.objects.filter(email_destino=email_destino, estado='activo').exists():
+                messages.error(request, 'Ya existe un código activo para ese correo.')
                 return render(request, 'crear_codigo_invitacion_admin.html')
 
-        codigo_obj = CodigoInvitacionAdminEvento.objects.create(
-            codigo=codigo,
-            email_destino=email_destino,
-            limite_eventos=int(limite_eventos),
-            fecha_expiracion=fecha_exp,
-            tiempo_limite_creacion=tiempo_limite
-        )
+            # Generar código único
+            codigo = str(uuid.uuid4()).replace('-', '')[:32]
+            try:
+                fecha_exp = timezone.datetime.fromisoformat(fecha_expiracion)
+            except Exception:
+                messages.error(request, 'Formato de fecha de expiración inválido.')
+                return render(request, 'crear_codigo_invitacion_admin.html')
 
-        # Enviar correo
-        url_registro = request.build_absolute_uri(f"/evento/registro_admin_evento/?codigo={codigo}")
-        asunto = 'Invitación para ser Administrador de Evento'
-        mensaje = f"""
-        Has sido invitado a ser Administrador de Evento en Eventsoft.<br><br>
-        Usa el siguiente código de invitación: <b>{codigo}</b><br>
-        O haz clic en el siguiente enlace para registrarte:<br>
-        <a href='{url_registro}'>{url_registro}</a><br><br>
-        Este código permite crear hasta {limite_eventos} evento(s) y expira el {fecha_exp.strftime('%d/%m/%Y %H:%M')}.<br>
-        """
-        email = EmailMessage(asunto, mensaje, to=[email_destino])
-        email.content_subtype = 'html'
-        try:
-            email.send()
-            messages.success(request, 'Código de invitación generado y enviado exitosamente.')
-        except Exception as e:
-            messages.error(request, f'Error al enviar el correo: {e}')
+            tiempo_limite = None
+            if tiempo_limite_creacion:
+                try:
+                    tiempo_limite = timezone.datetime.fromisoformat(tiempo_limite_creacion)
+                except Exception:
+                    messages.error(request, 'Formato de fecha/hora para el tiempo límite de creación inválido.')
+                    return render(request, 'crear_codigo_invitacion_admin.html')
+
+            codigo_obj = CodigoInvitacionAdminEvento.objects.create(
+                codigo=codigo,
+                email_destino=email_destino,
+                limite_eventos=int(limite_eventos),
+                fecha_expiracion=fecha_exp,
+                tiempo_limite_creacion=tiempo_limite
+            )
+
+            # Enviar correo de invitación a nuevo usuario
+            url_registro = request.build_absolute_uri(f"/evento/registro_admin_evento/?codigo={codigo}")
+            asunto = 'Invitación para ser Administrador de Evento'
+            mensaje = f"""
+            Has sido invitado a ser Administrador de Evento en Eventsoft.<br><br>
+            Usa el siguiente código de invitación: <b>{codigo}</b><br>
+            O haz clic en el siguiente enlace para registrarte:<br>
+            <a href='{url_registro}'>{url_registro}</a><br><br>
+            Este código permite crear hasta {limite_eventos} evento(s) y expira el {fecha_exp.strftime('%d/%m/%Y %H:%M')}.<br>
+            """
+            
+            # Enviar correo inmediatamente
+            email = EmailMessage(asunto, mensaje, to=[email_destino])
+            email.content_subtype = 'html'
+            try:
+                email.send()
+                messages.success(request, 'Código de invitación generado y enviado exitosamente.')
+            except Exception as e:
+                messages.success(request, 'Código de invitación generado exitosamente.')
+                messages.error(request, f'Error al enviar el correo: {e}')
+        
+        except Rol.DoesNotExist:
+            messages.error(request, 'Error: No se encontró el rol de administrador_evento en el sistema.')
+            return render(request, 'crear_codigo_invitacion_admin.html')
+        
         return redirect('crear_codigo_invitacion_admin')
     return render(request, 'crear_codigo_invitacion_admin.html')
 
@@ -316,7 +460,7 @@ def detalle_evento_admin(request, eve_id):
     if evento.eve_estado.lower() == 'finalizado':
         estados = ['Cerrado']  # Solo puede cambiar a cerrado
     else:
-        estados = ['Pendiente', 'Aprobado', 'Rechazado', 'Inscripciónes Cerradas']
+        estados = ['Pendiente', 'Aprobado', 'Rechazado', 'Inscripciones Cerradas']
     categorias = Categoria.objects.filter(eventocategoria__evento=evento).select_related('cat_area_fk')
     areas_con_categorias = {}
     for categoria in categorias:
@@ -328,9 +472,7 @@ def detalle_evento_admin(request, eve_id):
     # Calcular estadísticas si el evento está aprobado
     estadisticas = None
     if evento.eve_estado.lower() == 'aprobado':
-        from app_asistentes.models import AsistenteEvento
-        from app_participantes.models import ParticipanteEvento
-        from app_evaluadores.models import EvaluadorEvento, Criterio, Calificacion
+        
         
         # Estadísticas de asistentes
         asistentes_total = AsistenteEvento.objects.filter(evento=evento).count()

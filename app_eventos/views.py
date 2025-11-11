@@ -1,28 +1,33 @@
-from app_administradores.models import CodigoInvitacionAdminEvento, AdministradorEvento, CodigoInvitacionEvento
-from django.db import transaction
+import random
+import string
+from io import BytesIO
 
-from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse, JsonResponse
+import qrcode
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+
 from django.conf import settings
-from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
-from django.utils import timezone
+from django.contrib.sites.shortcuts import get_current_site
+from django.core.files.base import ContentFile
+from django.core.mail import EmailMessage
+from django.db import transaction
 from django.db.models import Q
-from app_participantes.models import Participante, ParticipanteEvento
+from django.http import HttpResponse, JsonResponse, HttpRequest
+from django.shortcuts import render, get_object_or_404, redirect
+from django.template.loader import render_to_string
+from django.urls import reverse
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+
+from app_administradores.models import CodigoInvitacionAdminEvento, AdministradorEvento, CodigoInvitacionEvento
 from app_areas.models import Area, Categoria
 from app_asistentes.models import Asistente, AsistenteEvento
 from app_evaluadores.models import Evaluador, EvaluadorEvento
-from .models import Evento, EventoCategoria
+from app_participantes.models import Participante, ParticipanteEvento, ProyectoGrupal
 from app_usuarios.models import Usuario, Rol, RolUsuario
-from django.core.mail import EmailMessage
-from django.template.loader import render_to_string
-from io import BytesIO
-from django.core.files.base import ContentFile
-from django.urls import reverse
-from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-import random
-import string
-import qrcode
+from .models import Evento, EventoCategoria
+
+
 
 def generar_clave():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=10))
@@ -62,12 +67,10 @@ def detalle_evento(request, eve_id):
         'categorias': categorias,
     })
 
-@csrf_exempt
+
 def compartir_evento_visitante(request, eve_id):
-    """Vista para generar contenido compartible del evento para visitantes web"""
     evento = get_object_or_404(Evento, pk=eve_id)
-    
-    # Verificar que el evento esté disponible públicamente
+
     if evento.eve_estado.lower() not in ['aprobado', 'inscripciones cerradas']:
         return JsonResponse({
             'success': False,
@@ -75,13 +78,9 @@ def compartir_evento_visitante(request, eve_id):
         }, status=403)
     
     if request.method == 'POST' or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        # Generar URL absoluta del evento
         url_evento = request.build_absolute_uri(reverse('detalle_evento_visitante', args=[eve_id]))
-        
-        # Obtener categorías
         categorias = [ec.categoria.cat_nombre for ec in evento.eventocategoria_set.all()]
         
-        # Crear mensaje genérico para visitantes
         mensaje_compartir = f"🎉 ¡Descubre este increíble evento!\n\n"
         mensaje_compartir += f"📅 {evento.eve_nombre}\n\n"
         mensaje_compartir += f"📅 Fechas: {evento.eve_fecha_inicio.strftime('%d/%m/%Y')}"
@@ -95,7 +94,6 @@ def compartir_evento_visitante(request, eve_id):
         if categorias:
             mensaje_compartir += f"🏷️ Categorías: {', '.join(categorias)}\n\n"
         
-        # Información sobre registro
         if evento.eve_tienecosto == "SI":
             mensaje_compartir += "💳 Evento con costo - Consulta detalles de inscripción\n\n"
         else:
@@ -109,15 +107,14 @@ def compartir_evento_visitante(request, eve_id):
             'titulo': f"Evento: {evento.eve_nombre}",
             'url': url_evento,
             'evento_nombre': evento.eve_nombre
-        }
-        
+        }      
         return JsonResponse(response_data)
     
-    # Para peticiones GET (por si acaso)
     return JsonResponse({
         'success': False,
         'error': 'Método no permitido.'
     }, status=405)
+
 
 def inscripcion_asistente(request, eve_id):
     return registro_evento(request, eve_id, 'asistente')
@@ -160,7 +157,8 @@ def registro_con_codigo(request, codigo):
     return render(request, f'inscribirse_{tipo}.html', {
         'evento': evento,
         'codigo_invitacion': codigo_invitacion,
-        'email_prefijado': codigo_invitacion.email_destino
+        'email_prefijado': codigo_invitacion.email_destino,
+        'categorias_evento': evento.eventocategoria_set.all()  # Para eventos multidisciplinarios
     })
 
 
@@ -179,6 +177,21 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
         correo = email_prefijado  # Email prefijado del código
         telefono = request.POST.get('par_telefono')
         archivo = request.FILES.get('documentos')
+        
+        # Nuevos campos para proyecto grupal
+        tipo_participacion = request.POST.get('tipo_participacion', 'individual')
+        nombre_proyecto = request.POST.get('nombre_proyecto', '')
+        descripcion_proyecto = request.POST.get('descripcion_proyecto', '')
+        es_lider_proyecto = request.POST.get('es_lider_proyecto') == '1'
+        archivo_proyecto = request.FILES.get('archivo_proyecto')
+        
+        # Campos de miembros del equipo (solo si es líder)
+        miembros_documentos = request.POST.getlist('miembro_documento[]') if es_lider_proyecto else []
+        miembros_correos = request.POST.getlist('miembro_correo[]') if es_lider_proyecto else []
+        miembros_nombres = request.POST.getlist('miembro_nombres[]') if es_lider_proyecto else []
+        miembros_apellidos = request.POST.getlist('miembro_apellidos[]') if es_lider_proyecto else []
+        miembros_telefonos = request.POST.getlist('miembro_telefono[]') if es_lider_proyecto else []
+        
     elif tipo == 'evaluador':
         documento = request.POST.get('eva_id')
         nombres = request.POST.get('eva_nombres')
@@ -186,6 +199,10 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
         correo = email_prefijado  # Email prefijado del código
         telefono = request.POST.get('eva_telefono')
         archivo = request.FILES.get('documentacion')
+        
+        # Nuevo campo para categoría en eventos multidisciplinarios
+        categoria_evaluacion_id = request.POST.get('categoria_evaluacion')
+        
     else:
         messages.error(request, "Tipo de registro inválido para códigos de invitación.")
         return redirect('ver_eventos')
@@ -194,6 +211,41 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
     if not (documento and nombres and apellidos):
         messages.error(request, "Por favor completa todos los campos obligatorios.")
         return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+    
+    # Validaciones específicas
+    if tipo == 'participante' and tipo_participacion == 'grupal' and not nombre_proyecto:
+        messages.error(request, "Para proyectos grupales, el nombre del proyecto es obligatorio.")
+        return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+    
+    if tipo == 'evaluador' and evento.eve_es_multidisciplinario == 'Si' and not categoria_evaluacion_id:
+        messages.error(request, "Para eventos multidisciplinarios, debes seleccionar una categoría para evaluar.")
+        return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+    
+    # Validaciones para miembros del equipo
+    if tipo == 'participante' and es_lider_proyecto and tipo_participacion == 'grupal':
+        # Verificar que todos los miembros tengan datos completos
+        if len(miembros_documentos) != len(miembros_correos) or len(miembros_documentos) != len(miembros_nombres) or len(miembros_documentos) != len(miembros_apellidos):
+            messages.error(request, "Todos los miembros del equipo deben tener documento, correo, nombres y apellidos.")
+            return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+        
+        for i, (doc, email, nom, ape) in enumerate(zip(miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos)):
+            if not (doc.strip() and email.strip() and nom.strip() and ape.strip()):
+                messages.error(request, f"El miembro {i+1} tiene campos incompletos. Todos los campos marcados como obligatorios son requeridos.")
+                return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+        
+        # Verificar que no haya documentos o correos duplicados entre miembros
+        if len(set(miembros_documentos)) != len(miembros_documentos):
+            messages.error(request, "No puede haber documentos duplicados entre los miembros del equipo.")
+            return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+        
+        if len(set(miembros_correos)) != len(miembros_correos):
+            messages.error(request, "No puede haber correos duplicados entre los miembros del equipo.")
+            return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+        
+        # Verificar que el líder no esté en la lista de miembros
+        if documento in miembros_documentos or correo in miembros_correos:
+            messages.error(request, "El líder del proyecto no puede estar listado como miembro adicional.")
+            return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
     
     # Continuar con el proceso normal de registro usando el sistema existente
     # Pero con el correo prefijado del código de invitación
@@ -260,6 +312,26 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
         # Crear relación evento-rol si no existe (solo participante y evaluador)
         if tipo == 'participante':
             participante, _ = Participante.objects.get_or_create(usuario=usuario)
+            
+            # Manejar proyecto grupal si es necesario
+            proyecto_grupal = None
+            if tipo_participacion == 'grupal':
+                # Buscar si ya existe un proyecto con el mismo nombre para este evento
+                proyecto_grupal = ProyectoGrupal.objects.filter(
+                    nombre_proyecto=nombre_proyecto,
+                    evento=evento
+                ).first()
+                
+                # Si no existe, crear el proyecto (solo si es líder o no hay líder aún)
+                if not proyecto_grupal:
+                    proyecto_grupal = ProyectoGrupal.objects.create(
+                        nombre_proyecto=nombre_proyecto,
+                        descripcion_proyecto=descripcion_proyecto,
+                        evento=evento,
+                        archivo_proyecto=archivo_proyecto if es_lider_proyecto else None
+                    )
+            
+            # Crear participación del líder
             ParticipanteEvento.objects.get_or_create(
                 participante=participante,
                 evento=evento,
@@ -267,11 +339,26 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     'par_eve_fecha_hora': timezone.now(),
                     'par_eve_estado': 'Pendiente',
                     'par_eve_documentos': archivo,
-                    'confirmado': True
+                    'confirmado': True,
+                    'es_grupal': tipo_participacion == 'grupal',
+                    'proyecto_grupal': proyecto_grupal,
+                    'es_lider_proyecto': es_lider_proyecto if tipo_participacion == 'grupal' else False
                 }
             )
+            
+            # Procesar miembros del equipo si es líder de proyecto grupal
+            if es_lider_proyecto and tipo_participacion == 'grupal' and miembros_documentos and proyecto_grupal:
+                _procesar_miembros_equipo_codigo(miembros_documentos, miembros_correos, miembros_nombres, 
+                                                miembros_apellidos, miembros_telefonos, evento, proyecto_grupal)
+            
         elif tipo == 'evaluador':
             evaluador, _ = Evaluador.objects.get_or_create(usuario=usuario)
+            
+            # Obtener categoría si es evento multidisciplinario
+            categoria_obj = None
+            if evento.eve_es_multidisciplinario == 'Si' and categoria_evaluacion_id:
+                categoria_obj = Categoria.objects.filter(cat_codigo=categoria_evaluacion_id).first()
+            
             EvaluadorEvento.objects.get_or_create(
                 evaluador=evaluador,
                 evento=evento,
@@ -279,7 +366,8 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     'eva_eve_fecha_hora': timezone.now(),
                     'eva_eve_estado': 'Pendiente',
                     'eva_eve_documentos': archivo,
-                    'confirmado': True
+                    'confirmado': True,
+                    'categoria_evaluacion': categoria_obj
                 }
             )
         
@@ -299,6 +387,26 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
         # Crear relación evento-rol si no existe
         if tipo == 'participante':
             participante, _ = Participante.objects.get_or_create(usuario=usuario)
+            
+            # Manejar proyecto grupal si es necesario
+            proyecto_grupal = None
+            if tipo_participacion == 'grupal':
+                # Buscar si ya existe un proyecto con el mismo nombre para este evento
+                proyecto_grupal = ProyectoGrupal.objects.filter(
+                    nombre_proyecto=nombre_proyecto,
+                    evento=evento
+                ).first()
+                
+                # Si no existe, crear el proyecto (solo si es líder o no hay líder aún)
+                if not proyecto_grupal:
+                    proyecto_grupal = ProyectoGrupal.objects.create(
+                        nombre_proyecto=nombre_proyecto,
+                        descripcion_proyecto=descripcion_proyecto,
+                        evento=evento,
+                        archivo_proyecto=archivo_proyecto if es_lider_proyecto else None
+                    )
+            
+            # Crear participación del líder
             ParticipanteEvento.objects.get_or_create(
                 participante=participante,
                 evento=evento,
@@ -306,11 +414,26 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     'par_eve_fecha_hora': timezone.now(),
                     'par_eve_estado': 'Pendiente',
                     'par_eve_documentos': archivo,
-                    'confirmado': True
+                    'confirmado': True,
+                    'es_grupal': tipo_participacion == 'grupal',
+                    'proyecto_grupal': proyecto_grupal,
+                    'es_lider_proyecto': es_lider_proyecto if tipo_participacion == 'grupal' else False
                 }
             )
+            
+            # Procesar miembros del equipo si es líder de proyecto grupal
+            if es_lider_proyecto and tipo_participacion == 'grupal' and miembros_documentos and proyecto_grupal:
+                _procesar_miembros_equipo_codigo(miembros_documentos, miembros_correos, miembros_nombres, 
+                                                miembros_apellidos, miembros_telefonos, evento, proyecto_grupal)
+            
         elif tipo == 'evaluador':
             evaluador, _ = Evaluador.objects.get_or_create(usuario=usuario)
+            
+            # Obtener categoría si es evento multidisciplinario
+            categoria_obj = None
+            if evento.eve_es_multidisciplinario == 'Si' and categoria_evaluacion_id:
+                categoria_obj = Categoria.objects.filter(cat_codigo=categoria_evaluacion_id).first()
+            
             EvaluadorEvento.objects.get_or_create(
                 evaluador=evaluador,
                 evento=evento,
@@ -318,7 +441,8 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     'eva_eve_fecha_hora': timezone.now(),
                     'eva_eve_estado': 'Pendiente',
                     'eva_eve_documentos': archivo,
-                    'confirmado': True
+                    'confirmado': True,
+                    'categoria_evaluacion': categoria_obj
                 }
             )
         
@@ -346,23 +470,59 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
         # Crear objetos evento-rol para nuevo usuario (solo participante y evaluador)
         if tipo == 'participante':
             participante = Participante.objects.create(usuario=usuario)
+            
+            # Manejar proyecto grupal si es necesario
+            proyecto_grupal = None
+            if tipo_participacion == 'grupal':
+                # Buscar si ya existe un proyecto con el mismo nombre para este evento
+                proyecto_grupal = ProyectoGrupal.objects.filter(
+                    nombre_proyecto=nombre_proyecto,
+                    evento=evento
+                ).first()
+                
+                # Si no existe, crear el proyecto (solo si es líder o no hay líder aún)
+                if not proyecto_grupal:
+                    proyecto_grupal = ProyectoGrupal.objects.create(
+                        nombre_proyecto=nombre_proyecto,
+                        descripcion_proyecto=descripcion_proyecto,
+                        evento=evento,
+                        archivo_proyecto=archivo_proyecto if es_lider_proyecto else None
+                    )
+            
+            # Crear participación del líder
             ParticipanteEvento.objects.create(
                 participante=participante,
                 evento=evento,
                 par_eve_fecha_hora=timezone.now(),
                 par_eve_estado='Pendiente',
                 par_eve_documentos=archivo,
-                confirmado=True
+                confirmado=True,
+                es_grupal=tipo_participacion == 'grupal',
+                proyecto_grupal=proyecto_grupal,
+                es_lider_proyecto=es_lider_proyecto if tipo_participacion == 'grupal' else False
             )
+            
+            # Procesar miembros del equipo si es líder de proyecto grupal
+            if es_lider_proyecto and tipo_participacion == 'grupal' and miembros_documentos and proyecto_grupal:
+                _procesar_miembros_equipo_codigo(miembros_documentos, miembros_correos, miembros_nombres, 
+                                                miembros_apellidos, miembros_telefonos, evento, proyecto_grupal)
+            
         elif tipo == 'evaluador':
             evaluador = Evaluador.objects.create(usuario=usuario)
+            
+            # Obtener categoría si es evento multidisciplinario
+            categoria_obj = None
+            if evento.eve_es_multidisciplinario == 'Si' and categoria_evaluacion_id:
+                categoria_obj = Categoria.objects.filter(cat_codigo=categoria_evaluacion_id).first()
+            
             EvaluadorEvento.objects.create(
                 evaluador=evaluador,
                 evento=evento,
                 eva_eve_fecha_hora=timezone.now(),
                 eva_eve_estado='Pendiente',
                 eva_eve_documentos=archivo,
-                confirmado=True
+                confirmado=True,
+                categoria_evaluacion=categoria_obj
             )
         
         # Enviar correo con credenciales
@@ -895,3 +1055,558 @@ def registrarse_admin_evento(request):
         'email': invitacion.email_destino,
         'username_sugerido': username_sugerido
     })
+
+
+@csrf_exempt
+def inscripcion_evaluador_directo(request, eve_id):
+    """Vista para inscripción directa de evaluadores (sin código)"""
+    evento = get_object_or_404(Evento, eve_id=eve_id)
+    
+    # Verificar que las inscripciones de evaluadores estén abiertas
+    if evento.eve_inscripcion_evaluadores != 'Si':
+        messages.error(request, "Las inscripciones para evaluadores están cerradas en este evento.")
+        return redirect('detalle_evento_visitante', eve_id=eve_id)
+    
+    # Verificar que el evento esté activo
+    if evento.eve_estado.lower() not in ['aprobado', 'inscripciones cerradas']:
+        messages.error(request, "Este evento no está disponible para inscripciones.")
+        return redirect('detalle_evento_visitante', eve_id=eve_id)
+    
+    if request.method == "POST":
+        return procesar_inscripcion_directa(request, evento, 'evaluador')
+    
+    return render(request, 'inscripcion_evaluador_directo.html', {
+        'evento': evento,
+        'categorias_evento': evento.eventocategoria_set.all()
+    })
+
+
+@csrf_exempt
+def inscripcion_participante_directo(request, eve_id):
+    """Vista para inscripción directa de participantes (sin código)"""
+    evento = get_object_or_404(Evento, eve_id=eve_id)
+    
+    # Verificar que las inscripciones de participantes estén abiertas
+    if evento.eve_inscripcion_participantes != 'Si':
+        messages.error(request, "Las inscripciones para participantes están cerradas en este evento.")
+        return redirect('detalle_evento_visitante', eve_id=eve_id)
+    
+    # Verificar que el evento esté activo
+    if evento.eve_estado.lower() not in ['aprobado', 'inscripciones cerradas']:
+        messages.error(request, "Este evento no está disponible para inscripciones.")
+        return redirect('detalle_evento_visitante', eve_id=eve_id)
+    
+    if request.method == "POST":
+        return procesar_inscripcion_directa(request, evento, 'participante')
+    
+    return render(request, 'inscripcion_participante_directo.html', {
+        'evento': evento,
+        'categorias_evento': evento.eventocategoria_set.all()
+    })
+
+
+def procesar_inscripcion_directa(request, evento, tipo):
+    """Función que procesa la inscripción directa (sin código de invitación)"""
+    # Extraer campos comunes
+    if tipo == 'participante':
+        documento = request.POST.get('par_id')
+        nombres = request.POST.get('par_nombres')
+        apellidos = request.POST.get('par_apellidos')
+        correo = request.POST.get('par_correo')
+        telefono = request.POST.get('par_telefono')
+        archivo = request.FILES.get('documentos')
+        
+        # Campos específicos de proyecto grupal
+        tipo_participacion = request.POST.get('tipo_participacion', 'individual')
+        nombre_proyecto = request.POST.get('nombre_proyecto', '')
+        descripcion_proyecto = request.POST.get('descripcion_proyecto', '')
+        es_lider_proyecto = request.POST.get('es_lider_proyecto') == '1'
+        archivo_proyecto = request.FILES.get('archivo_proyecto')
+        
+        # Campos de miembros del equipo (solo si es líder)
+        miembros_documentos = request.POST.getlist('miembro_documento[]') if es_lider_proyecto else []
+        miembros_correos = request.POST.getlist('miembro_correo[]') if es_lider_proyecto else []
+        miembros_nombres = request.POST.getlist('miembro_nombres[]') if es_lider_proyecto else []
+        miembros_apellidos = request.POST.getlist('miembro_apellidos[]') if es_lider_proyecto else []
+        miembros_telefonos = request.POST.getlist('miembro_telefono[]') if es_lider_proyecto else []
+        
+    elif tipo == 'evaluador':
+        documento = request.POST.get('eva_id')
+        nombres = request.POST.get('eva_nombres')
+        apellidos = request.POST.get('eva_apellidos')
+        correo = request.POST.get('eva_correo')
+        telefono = request.POST.get('eva_telefono')
+        archivo = request.FILES.get('documentacion')
+        
+        # Campo específico de categoría
+        categoria_evaluacion_id = request.POST.get('categoria_evaluacion')
+        
+    else:
+        messages.error(request, "Tipo de registro inválido.")
+        return redirect('detalle_evento_visitante', evento.eve_id)
+    
+    # Validación básica
+    if not (documento and nombres and apellidos and correo):
+        messages.error(request, "Por favor completa todos los campos obligatorios.")
+        return redirect(f'inscripcion_{tipo}_directo', eve_id=evento.eve_id)
+    
+    # Validaciones específicas
+    if tipo == 'participante' and tipo_participacion == 'grupal' and not nombre_proyecto:
+        messages.error(request, "Para proyectos grupales, el nombre del proyecto es obligatorio.")
+        return redirect('inscripcion_participante_directo', eve_id=evento.eve_id)
+    
+    if tipo == 'evaluador' and evento.eve_es_multidisciplinario == 'Si' and not categoria_evaluacion_id:
+        messages.error(request, "Para eventos multidisciplinarios, debes seleccionar una categoría para evaluar.")
+        return redirect('inscripcion_evaluador_directo', eve_id=evento.eve_id)
+    
+    # Validaciones para miembros del equipo
+    if tipo == 'participante' and es_lider_proyecto and tipo_participacion == 'grupal':
+        # Verificar que todos los miembros tengan datos completos
+        if len(miembros_documentos) != len(miembros_correos) or len(miembros_documentos) != len(miembros_nombres) or len(miembros_documentos) != len(miembros_apellidos):
+            messages.error(request, "Todos los miembros del equipo deben tener documento, correo, nombres y apellidos.")
+            return redirect('inscripcion_participante_directo', eve_id=evento.eve_id)
+        
+        for i, (doc, email, nom, ape) in enumerate(zip(miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos)):
+            if not (doc.strip() and email.strip() and nom.strip() and ape.strip()):
+                messages.error(request, f"El miembro {i+1} tiene campos incompletos. Todos los campos marcados como obligatorios son requeridos.")
+                return redirect('inscripcion_participante_directo', eve_id=evento.eve_id)
+        
+        # Verificar que no haya documentos o correos duplicados entre miembros
+        if len(set(miembros_documentos)) != len(miembros_documentos):
+            messages.error(request, "No puede haber documentos duplicados entre los miembros del equipo.")
+            return redirect('inscripcion_participante_directo', eve_id=evento.eve_id)
+        
+        if len(set(miembros_correos)) != len(miembros_correos):
+            messages.error(request, "No puede haber correos duplicados entre los miembros del equipo.")
+            return redirect('inscripcion_participante_directo', eve_id=evento.eve_id)
+        
+        # Verificar que el líder no esté en la lista de miembros
+        if documento in miembros_documentos or correo in miembros_correos:
+            messages.error(request, "El líder del proyecto no puede estar listado como miembro adicional.")
+            return redirect('inscripcion_participante_directo', eve_id=evento.eve_id)
+    
+    # Validar consistencia de datos si el usuario ya existe
+    usuario = Usuario.objects.filter(Q(email=correo) | Q(documento=documento)).first()
+    if usuario:
+        if (usuario.email != correo or usuario.documento != documento or 
+            usuario.first_name != nombres or usuario.last_name != apellidos):
+            messages.error(request, 
+                "Los datos no coinciden con un usuario existente. "
+                "Si ya tienes cuenta, verifica que los datos sean exactamente iguales."
+            )
+            return redirect(f'inscripcion_{tipo}_directo', eve_id=evento.eve_id)
+    
+    # Validar que no esté inscrito en el mismo evento (en cualquier rol)
+    ya_inscrito = False
+    pendiente_confirmacion = False
+    rol_inscrito = ""
+    if usuario:
+        # Verificar si está como participante
+        participante = getattr(usuario, 'participante', None)
+        if participante:
+            participacion = ParticipanteEvento.objects.filter(participante=participante, evento=evento).first()
+            if participacion:
+                ya_inscrito = True
+                pendiente_confirmacion = not participacion.confirmado
+                rol_inscrito = "participante"
+        
+        # Verificar si está como evaluador
+        if not ya_inscrito:
+            evaluador = getattr(usuario, 'evaluador', None)
+            if evaluador:
+                evaluacion = EvaluadorEvento.objects.filter(evaluador=evaluador, evento=evento).first()
+                if evaluacion:
+                    ya_inscrito = True
+                    pendiente_confirmacion = not evaluacion.confirmado
+                    rol_inscrito = "evaluador"
+        
+        # Verificar si está como asistente
+        if not ya_inscrito:
+            asistente = getattr(usuario, 'asistente', None)
+            if asistente:
+                asistencia = AsistenteEvento.objects.filter(asistente=asistente, evento=evento).first()
+                if asistencia:
+                    ya_inscrito = True
+                    pendiente_confirmacion = not asistencia.confirmado
+                    rol_inscrito = "asistente"
+    
+    if ya_inscrito:
+        if pendiente_confirmacion:
+            messages.warning(request, f"Ya tienes una inscripción como {rol_inscrito} en este evento pendiente de confirmación.")
+        else:
+            messages.info(request, f"Ya estás inscrito como {rol_inscrito} en este evento.")
+        return redirect('detalle_evento_visitante', eve_id=evento.eve_id)
+    
+    # Crear o activar usuario y procesar la inscripción
+    with transaction.atomic():
+        if usuario and usuario.is_active:
+            # Usuario existe y está activo
+            _crear_relacion_evento_rol_directo(usuario, evento, tipo, archivo, 
+                                              tipo_participacion if tipo == 'participante' else None,
+                                              nombre_proyecto if tipo == 'participante' else None,
+                                              descripcion_proyecto if tipo == 'participante' else None,
+                                              es_lider_proyecto if tipo == 'participante' else False,
+                                              archivo_proyecto if tipo == 'participante' else None,
+                                              categoria_evaluacion_id if tipo == 'evaluador' else None,
+                                              miembros_data=(miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos, miembros_telefonos) if tipo == 'participante' and es_lider_proyecto else None)
+        
+        elif usuario and not usuario.is_active:
+            # Usuario existe pero está inactivo - reactivar
+            usuario.is_active = True
+            usuario.save()
+            _crear_relacion_evento_rol_directo(usuario, evento, tipo, archivo,
+                                              tipo_participacion if tipo == 'participante' else None,
+                                              nombre_proyecto if tipo == 'participante' else None,
+                                              descripcion_proyecto if tipo == 'participante' else None,
+                                              es_lider_proyecto if tipo == 'participante' else False,
+                                              archivo_proyecto if tipo == 'participante' else None,
+                                              categoria_evaluacion_id if tipo == 'evaluador' else None,
+                                              miembros_data=(miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos, miembros_telefonos) if tipo == 'participante' and es_lider_proyecto else None)
+        
+        else:
+            # Crear nuevo usuario
+            usuario = Usuario.objects.create_user(
+                username=correo.split('@')[0] if correo else f"user{documento}",
+                email=correo,
+                telefono=telefono,
+                documento=documento,
+                first_name=nombres,
+                last_name=apellidos,
+                password='temporal',
+                is_active=False  # Inactivo hasta confirmación por email
+            )
+            _crear_relacion_evento_rol_directo(usuario, evento, tipo, archivo,
+                                              tipo_participacion if tipo == 'participante' else None,
+                                              nombre_proyecto if tipo == 'participante' else None,
+                                              descripcion_proyecto if tipo == 'participante' else None,
+                                              es_lider_proyecto if tipo == 'participante' else False,
+                                              archivo_proyecto if tipo == 'participante' else None,
+                                              categoria_evaluacion_id if tipo == 'evaluador' else None,
+                                              miembros_data=(miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos, miembros_telefonos) if tipo == 'participante' and es_lider_proyecto else None)
+            
+            # Enviar correo de confirmación
+            _enviar_correo_confirmacion_directo(usuario, evento, tipo)
+    
+    messages.success(request, f"Te has preinscrito exitosamente como {tipo} en el evento {evento.eve_nombre}. Revisa tu correo para confirmar tu inscripción.")
+    return redirect('detalle_evento_visitante', eve_id=evento.eve_id)
+
+
+def _crear_relacion_evento_rol_directo(usuario, evento, tipo, archivo, tipo_participacion=None, 
+                                      nombre_proyecto=None, descripcion_proyecto=None, 
+                                      es_lider_proyecto=False, archivo_proyecto=None, 
+                                      categoria_evaluacion_id=None, miembros_data=None):
+    """Función auxiliar para crear relaciones evento-rol en inscripción directa"""
+    # Asignar rol si no lo tiene
+    rol = Rol.objects.filter(nombre__iexact=tipo).first()
+    if rol and not RolUsuario.objects.filter(usuario=usuario, rol=rol).exists():
+        RolUsuario.objects.create(usuario=usuario, rol=rol)
+    
+    if tipo == 'participante':
+        participante, _ = Participante.objects.get_or_create(usuario=usuario)
+        
+        # Manejar proyecto grupal si es necesario
+        proyecto_grupal = None
+        if tipo_participacion == 'grupal' and nombre_proyecto:
+            # Buscar si ya existe un proyecto con el mismo nombre para este evento
+            proyecto_grupal = ProyectoGrupal.objects.filter(
+                nombre_proyecto=nombre_proyecto,
+                evento=evento
+            ).first()
+            
+            # Si no existe, crear el proyecto
+            if not proyecto_grupal:
+                proyecto_grupal = ProyectoGrupal.objects.create(
+                    nombre_proyecto=nombre_proyecto,
+                    descripcion_proyecto=descripcion_proyecto or '',
+                    evento=evento,
+                    archivo_proyecto=archivo_proyecto if es_lider_proyecto else None
+                )
+        
+        # Crear participación del líder
+        ParticipanteEvento.objects.get_or_create(
+            participante=participante,
+            evento=evento,
+            defaults={
+                'par_eve_fecha_hora': timezone.now(),
+                'par_eve_estado': 'Pendiente',
+                'par_eve_documentos': archivo,
+                'confirmado': False,  # Requiere confirmación por email
+                'es_grupal': tipo_participacion == 'grupal',
+                'proyecto_grupal': proyecto_grupal,
+                'es_lider_proyecto': es_lider_proyecto if tipo_participacion == 'grupal' else False
+            }
+        )
+        
+        # Procesar miembros del equipo si es líder de proyecto grupal
+        if es_lider_proyecto and tipo_participacion == 'grupal' and miembros_data and proyecto_grupal:
+            miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos, miembros_telefonos = miembros_data
+            
+            for i, (documento, correo, nombres, apellidos) in enumerate(zip(miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos)):
+                telefono = miembros_telefonos[i] if i < len(miembros_telefonos) else ''
+                
+                # Crear o buscar usuario del miembro
+                usuario_miembro = Usuario.objects.filter(Q(email=correo) | Q(documento=documento)).first()
+                
+                if usuario_miembro:
+                    # Usuario existe - verificar consistencia de datos
+                    if (usuario_miembro.email != correo or usuario_miembro.documento != documento or 
+                        usuario_miembro.first_name != nombres or usuario_miembro.last_name != apellidos):
+                        continue  # Saltar este miembro si hay inconsistencias
+                    
+                    # Activar usuario si está inactivo
+                    if not usuario_miembro.is_active:
+                        usuario_miembro.is_active = True
+                        usuario_miembro.save()
+                else:
+                    # Crear nuevo usuario para el miembro
+                    try:
+                        usuario_miembro = Usuario.objects.create_user(
+                            username=correo.split('@')[0] if correo else f"user{documento}",
+                            email=correo,
+                            telefono=telefono,
+                            documento=documento,
+                            first_name=nombres,
+                            last_name=apellidos,
+                            password='temporal',
+                            is_active=False  # Inactivo hasta confirmación por email
+                        )
+                    except Exception:
+                        continue  # Saltar si hay problemas creando el usuario
+                
+                # Asignar rol de participante al miembro
+                rol_participante = Rol.objects.filter(nombre__iexact='participante').first()
+                if rol_participante and not RolUsuario.objects.filter(usuario=usuario_miembro, rol=rol_participante).exists():
+                    RolUsuario.objects.create(usuario=usuario_miembro, rol=rol_participante)
+                
+                # Crear participante y asociarlo al proyecto
+                participante_miembro, _ = Participante.objects.get_or_create(usuario=usuario_miembro)
+                
+                # Verificar que no esté ya inscrito en este evento
+                if not ParticipanteEvento.objects.filter(participante=participante_miembro, evento=evento).exists():
+                    ParticipanteEvento.objects.create(
+                        participante=participante_miembro,
+                        evento=evento,
+                        par_eve_fecha_hora=timezone.now(),
+                        par_eve_estado='Pendiente',
+                        confirmado=False,  # Requiere confirmación por email
+                        es_grupal=True,
+                        proyecto_grupal=proyecto_grupal,
+                        es_lider_proyecto=False  # No es líder
+                    )
+                    
+                    # Enviar correo de confirmación al miembro
+                    _enviar_correo_confirmacion_directo(usuario_miembro, evento, 'participante')
+    
+    elif tipo == 'evaluador':
+        evaluador, _ = Evaluador.objects.get_or_create(usuario=usuario)
+        
+        # Obtener categoría si es evento multidisciplinario
+        categoria_obj = None
+        if evento.eve_es_multidisciplinario == 'Si' and categoria_evaluacion_id:
+            categoria_obj = Categoria.objects.filter(cat_codigo=categoria_evaluacion_id).first()
+        
+        EvaluadorEvento.objects.get_or_create(
+            evaluador=evaluador,
+            evento=evento,
+            defaults={
+                'eva_eve_fecha_hora': timezone.now(),
+                'eva_eve_estado': 'Pendiente',
+                'eva_eve_documentos': archivo,
+                'confirmado': False,  # Requiere confirmación por email
+                'categoria_evaluacion': categoria_obj
+            }
+        )
+
+
+def _enviar_correo_confirmacion_directo(usuario, evento, tipo):
+    """Enviar correo de confirmación para inscripción directa"""
+    try:
+        # Generar token de confirmación
+        serializer = URLSafeTimedSerializer(settings.SECRET_KEY)
+        token = serializer.dumps({
+            'user_id': usuario.id,
+            'evento_id': evento.eve_id,
+            'tipo': tipo
+        })
+        
+        # URL de confirmación
+        
+        
+        # Crear un request dummy para get_current_site
+        request = HttpRequest()
+        request.META['HTTP_HOST'] = 'localhost:8000'  # O usar settings.SITE_URL si existe
+        
+        current_site = get_current_site(request)
+        confirmation_url = f"http://{current_site.domain}{reverse('confirmar_inscripcion_directa', args=[token])}"
+        
+        # Renderizar template de correo
+        context = {
+            'usuario': usuario,
+            'evento': evento,
+            'tipo': tipo,
+            'confirmation_url': confirmation_url
+        }
+        
+        cuerpo_html = render_to_string('correo_confirmacion_inscripcion_directa.html', context)
+        
+        email = EmailMessage(
+            subject=f'Confirma tu inscripción como {tipo} - {evento.eve_nombre}',
+            body=cuerpo_html,
+            to=[usuario.email],
+        )
+        email.content_subtype = 'html'
+        email.send(fail_silently=True)
+        
+    except Exception as e:
+        print(f"Error enviando correo de confirmación: {e}")
+
+
+def confirmar_inscripcion_directa(request, token):
+    """Vista para confirmar inscripción directa mediante token"""
+    try:
+        serializer = URLSafeTimedSerializer(settings.SECRET_KEY)
+        data = serializer.loads(token, max_age=86400)  # Token válido por 24 horas
+        
+        usuario = Usuario.objects.get(id=data['user_id'])
+        evento = Evento.objects.get(eve_id=data['evento_id'])
+        tipo = data['tipo']
+        
+        # Generar credenciales y activar usuario
+        clave = generar_clave()
+        usuario.set_password(clave)
+        usuario.is_active = True
+        usuario.save()
+        
+        # Confirmar la inscripción según el tipo
+        inscripcion_confirmada = False
+        if tipo == 'participante':
+            participante = getattr(usuario, 'participante', None)
+            if participante:
+                participacion = ParticipanteEvento.objects.filter(participante=participante, evento=evento).first()
+                if participacion:
+                    participacion.confirmado = True
+                    participacion.save()
+                    inscripcion_confirmada = True
+                    
+        elif tipo == 'evaluador':
+            evaluador = getattr(usuario, 'evaluador', None)
+            if evaluador:
+                evaluacion = EvaluadorEvento.objects.filter(evaluador=evaluador, evento=evento).first()
+                if evaluacion:
+                    evaluacion.confirmado = True
+                    evaluacion.save()
+                    inscripcion_confirmada = True
+        
+        # Enviar correo con credenciales de acceso
+        if inscripcion_confirmada:
+            try:
+                cuerpo_html = render_to_string('correo_registro_completado.html', {
+                    'nombre': usuario.first_name,
+                    'evento': evento.eve_nombre,
+                    'tipo': tipo.title(),
+                    'clave': clave,
+                    'email': usuario.email,
+                })
+                
+                email = EmailMessage(
+                    subject=f'Credenciales de acceso - {evento.eve_nombre}',
+                    body=cuerpo_html,
+                    to=[usuario.email],
+                )
+                email.content_subtype = 'html'
+                email.send(fail_silently=True)
+                
+                messages.success(request, f"Tu inscripción como {tipo} en el evento {evento.eve_nombre} ha sido confirmada exitosamente. Se ha enviado un correo con tus credenciales de acceso.")
+            except Exception as e:
+                print(f"Error enviando correo con credenciales: {e}")
+                messages.success(request, f"Tu inscripción como {tipo} en el evento {evento.eve_nombre} ha sido confirmada exitosamente.")
+        else:
+            messages.error(request, "Hubo un problema al confirmar tu inscripción. Por favor contacta al administrador.")
+        
+        return redirect('detalle_evento_visitante', eve_id=evento.eve_id)
+        
+    except (BadSignature, SignatureExpired):
+        messages.error(request, "El enlace de confirmación es inválido o ha expirado.")
+        return redirect('ver_eventos')
+    except (Usuario.DoesNotExist, Evento.DoesNotExist):
+        messages.error(request, "Los datos de confirmación no son válidos.")
+        return redirect('ver_eventos')
+
+
+def _procesar_miembros_equipo_codigo(miembros_documentos, miembros_correos, miembros_nombres, 
+                                   miembros_apellidos, miembros_telefonos, evento, proyecto_grupal):
+    """Función auxiliar para procesar miembros del equipo en inscripciones con código"""
+    for i, (documento, correo, nombres, apellidos) in enumerate(zip(miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos)):
+        telefono = miembros_telefonos[i] if i < len(miembros_telefonos) else ''
+        
+        # Crear o buscar usuario del miembro
+        usuario_miembro = Usuario.objects.filter(Q(email=correo) | Q(documento=documento)).first()
+        
+        if usuario_miembro:
+            # Usuario existe - verificar consistencia de datos
+            if (usuario_miembro.email != correo or usuario_miembro.documento != documento or 
+                usuario_miembro.first_name != nombres or usuario_miembro.last_name != apellidos):
+                continue  # Saltar este miembro si hay inconsistencias
+            
+            # Activar usuario si está inactivo
+            if not usuario_miembro.is_active:
+                usuario_miembro.is_active = True
+                usuario_miembro.save()
+        else:
+            # Crear nuevo usuario para el miembro
+            try:
+                usuario_miembro = Usuario.objects.create_user(
+                    username=correo.split('@')[0] if correo else f"user{documento}",
+                    email=correo,
+                    telefono=telefono,
+                    documento=documento,
+                    first_name=nombres,
+                    last_name=apellidos,
+                    password='temporal',
+                    is_active=True  # Activo directamente ya que viene por invitación
+                )
+                
+                # Enviar correo con credenciales
+                clave = generar_clave()
+                usuario_miembro.set_password(clave)
+                usuario_miembro.save()
+                
+                cuerpo_html = render_to_string('correo_registro_completado.html', {
+                    'nombre': usuario_miembro.first_name,
+                    'evento': evento.eve_nombre,
+                    'tipo': 'Participante',
+                    'clave': clave,
+                    'email': usuario_miembro.email,
+                })
+                
+                email = EmailMessage(
+                    subject=f'Bienvenido al equipo - {evento.eve_nombre}',
+                    body=cuerpo_html,
+                    to=[usuario_miembro.email],
+                )
+                email.content_subtype = 'html'
+                email.send(fail_silently=True)
+                
+            except Exception:
+                continue  # Saltar si hay problemas creando el usuario
+        
+        # Asignar rol de participante al miembro
+        rol_participante = Rol.objects.filter(nombre__iexact='participante').first()
+        if rol_participante and not RolUsuario.objects.filter(usuario=usuario_miembro, rol=rol_participante).exists():
+            RolUsuario.objects.create(usuario=usuario_miembro, rol=rol_participante)
+        
+        # Crear participante y asociarlo al proyecto
+        participante_miembro, _ = Participante.objects.get_or_create(usuario=usuario_miembro)
+        
+        # Verificar que no esté ya inscrito en este evento
+        if not ParticipanteEvento.objects.filter(participante=participante_miembro, evento=evento).exists():
+            ParticipanteEvento.objects.create(
+                participante=participante_miembro,
+                evento=evento,
+                par_eve_fecha_hora=timezone.now(),
+                par_eve_estado='Pendiente',
+                confirmado=True,  # Confirmado directamente ya que viene por invitación
+                es_grupal=True,
+                proyecto_grupal=proyecto_grupal,
+                es_lider_proyecto=False  # No es líder
+            )

@@ -5,6 +5,7 @@ urlpatterns = [
     path('dashboard-participante/', views.dashboard_participante_general, name='dashboard_participante_general'),
     path('dashboard-participante/evento/<int:evento_id>/', views.dashboard_participante_evento, name='dashboard_participante_evento'),
     path('modificar-preinscripcion/<int:evento_id>', views.modificar_preinscripcion, name='modificar_preinscripcion_participante'),
+    path('modificar-proyecto-grupal/<int:evento_id>/', views.modificar_proyecto_grupal, name='modificar_proyecto_grupal'),
     path('cancelar-inscripcion-participante/', views.cancelar_inscripcion, name='cancelar_preinscripcion_participante'),
     path('ver-qr-participante/<int:evento_id>/', views.ver_qr_participante, name='ver_qr_participante'),
     path('desacargar-qr-participante/<int:evento_id>/', views.descargar_qr_participante, name='descargar_qr_participante'),

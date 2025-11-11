@@ -49,6 +49,22 @@
                         <input type="email" name="eva_correo" class="form-control" required>
                     {% endif %}
                 </div>
+                
+                <!-- Selección de categoría para eventos multidisciplinarios -->
+                {% if evento.eve_es_multidisciplinario == 'Si' %}
+                <div class="mb-3">
+                    <label class="form-label">Categoría a Evaluar <span class="text-danger">*</span></label>
+                    <select name="categoria_evaluacion" class="form-select" required>
+                        <option value="">Selecciona la categoría que deseas evaluar</option>
+                        {% for categoria_evento in categorias_evento %}
+                            <option value="{{ categoria_evento.categoria.cat_codigo }}">
+                                {{ categoria_evento.categoria.cat_area_fk.are_nombre }} - {{ categoria_evento.categoria.cat_nombre }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Como este es un evento multidisciplinario, debes seleccionar la categoría específica que evaluarás.</div>
+                </div>
+                {% endif %}
                 <div class="mb-4">
                     <label class="form-label">Documentación (PDF, DOC)</label>
                     <input type="file" name="documentacion" class="form-control">

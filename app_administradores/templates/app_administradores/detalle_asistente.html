@@ -42,6 +42,11 @@
                     {% else %}
                         <p><strong>QR generado:</strong> ❌</p>
                     {% endif %}
+                    {% if asistente.asi_eve_soporte %}
+                        <p><strong>Soporte:</strong> ✅ <a href="{{ asistente.asi_eve_soporte.url }}" download class="btn btn-sm btn-outline-dark ms-2">Descargar Soporte</a></p>
+                    {% else %}
+                        <p><strong>Soporte:</strong> ❌</p>
+                    {% endif %}
                 </div>
             </div>
 

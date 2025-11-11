@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirma tu Inscripción - {{ evento.eve_nombre }}</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            line-height: 1.6; 
+            color: #333; 
+            background-color: #f9f9f9;
+            margin: 0;
+            padding: 20px;
+        }
+        .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            background-color: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .header { 
+            background-color: #007bff; 
+            color: white; 
+            padding: 20px; 
+            text-align: center;
+        }
+        .content { 
+            padding: 30px; 
+        }
+        .button { 
+            display: inline-block; 
+            background-color: #28a745; 
+            color: white; 
+            padding: 12px 25px; 
+            text-decoration: none; 
+            border-radius: 5px; 
+            margin: 20px 0;
+            text-align: center;
+        }
+        .button:hover { 
+            background-color: #218838; 
+        }
+        .event-info { 
+            background-color: #f8f9fa; 
+            border-left: 4px solid #007bff; 
+            padding: 15px; 
+            margin: 20px 0;
+        }
+        .footer { 
+            background-color: #f8f9fa; 
+            padding: 20px; 
+            text-align: center; 
+            font-size: 12px; 
+            color: #666;
+        }
+        .warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Confirma tu Inscripción</h1>
+            <p>EventSoft - Sistema de Gestión de Eventos</p>
+        </div>
+        
+        <div class="content">
+            <h2>¡Hola {{ usuario.first_name }} {{ usuario.last_name }}!</h2>
+            
+            <p>Te has preinscrito exitosamente como <strong>{{ tipo }}</strong> en el evento:</p>
+            
+            <div class="event-info">
+                <h3>{{ evento.eve_nombre }}</h3>
+                <p><strong>Fecha:</strong> {{ evento.eve_fecha_inicio|date:"d/m/Y" }} al {{ evento.eve_fecha_fin|date:"d/m/Y" }}</p>
+                <p><strong>Lugar:</strong> {{ evento.eve_lugar }}</p>
+                <p><strong>Descripción:</strong> {{ evento.eve_descripcion|truncatewords:30 }}</p>
+            </div>
+            
+            <div class="warning">
+                <strong>⚠️ Acción Requerida:</strong> 
+                Para completar tu inscripción, debes confirmarla haciendo clic en el botón de abajo. 
+                Tu inscripción no será válida hasta que la confirmes.
+            </div>
+            
+            <div style="text-align: center;">
+                <a href="{{ confirmation_url }}" class="button">
+                    CONFIRMAR INSCRIPCIÓN COMO {{ tipo|upper }}
+                </a>
+            </div>
+            
+            <p><strong>Información importante:</strong></p>
+            <ul>
+                <li>Este enlace de confirmación es válido por <strong>24 horas</strong></li>
+                <li>Una vez confirmada tu inscripción, recibirás un correo con más detalles</li>
+                <li>Si no puedes hacer clic en el botón, copia y pega este enlace en tu navegador: {{ confirmation_url }}</li>
+                {% if tipo == 'participante' %}
+                <li>Como participante, podrás presentar tu proyecto en el evento</li>
+                {% elif tipo == 'evaluador' %}
+                <li>Como evaluador, serás responsable de evaluar los proyectos presentados</li>
+                {% endif %}
+            </ul>
+            
+            <p>Si no solicitaste esta inscripción, puedes ignorar este correo.</p>
+            
+            <p>¡Esperamos verte en el evento!</p>
+            
+            <p>Saludos cordiales,<br>
+            <strong>Equipo EventSoft</strong></p>
+        </div>
+        
+        <div class="footer">
+            <p>Este es un correo automático, por favor no respondas a esta dirección.</p>
+            <p>© 2024 EventSoft - Sistema de Gestión de Eventos</p>
+        </div>
+    </div>
+</body>
+</html>

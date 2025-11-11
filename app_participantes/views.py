@@ -53,7 +53,7 @@ def dashboard_participante_general(request):
         elif inscripcion.par_eve_estado == 'Cancelado':
             estadisticas['cancelados'] += 1
 
-    return render(request, 'dashboard_participante_general.html', {
+    return render(request, 'app_participantes/dashboard_participante_general.html', {
         'eventos': eventos,
         'estadisticas': estadisticas
     })
@@ -68,6 +68,7 @@ def dashboard_participante_evento(request, evento_id):
         ParticipanteEvento, participante=participante, evento__pk=evento_id
     )
 
+    # Información básica
     datos = {
         'par_nombre': participante.usuario.first_name,
         'par_correo': participante.usuario.email,
@@ -78,11 +79,59 @@ def dashboard_participante_evento(request, evento_id):
         'eve_memorias': inscripcion.evento.eve_memorias,
         'par_eve_estado': inscripcion.par_eve_estado,
         'par_id': participante.id,
-        'eve_id': inscripcion.evento.eve_id
+        'eve_id': inscripcion.evento.eve_id,
+        'es_grupal': inscripcion.es_grupal,
+        'es_lider_proyecto': inscripcion.es_lider_proyecto,
+        'proyecto_grupal': inscripcion.proyecto_grupal
     }
-    return render(request, 'dashboard_participante.html', {'datos': datos})
+    
+    # Inicializar variables para todos los casos
+    miembros_proyecto = []
+    calificaciones = []
+    promedio_calificacion = 0
+    total_calificaciones = 0
+    
+    # Si es participación grupal, obtener información adicional
+    if inscripcion.es_grupal and inscripcion.proyecto_grupal:
+        proyecto = inscripcion.proyecto_grupal
+        
+        # Obtener todos los miembros del proyecto
+        miembros_proyecto = ParticipanteEvento.objects.filter(
+            proyecto_grupal=proyecto,
+            evento=inscripcion.evento
+        ).select_related('participante__usuario')
+        
+        # Obtener calificaciones del proyecto (si existen)
+        from app_evaluadores.models import Calificacion
+        # Obtener todos los participantes del proyecto para buscar sus calificaciones
+        participantes_proyecto = miembros_proyecto.values_list('participante_id', flat=True)
+        calificaciones = Calificacion.objects.filter(
+            participante_id__in=participantes_proyecto,
+            criterio__cri_evento_fk=inscripcion.evento
+        ).select_related('criterio', 'evaluador__usuario')
+        
+        # Calcular promedio de calificaciones
+        total_calificaciones = calificaciones.count()
+        suma_calificaciones = sum(cal.cal_valor for cal in calificaciones)
+        promedio_calificacion = suma_calificaciones / total_calificaciones if total_calificaciones > 0 else 0
+        
+        # Debug: agregar conteo de miembros
+        print(f"DEBUG: Proyecto {proyecto.id}, Miembros encontrados: {miembros_proyecto.count()}")
+        for miembro in miembros_proyecto:
+            print(f"  - {miembro.participante.usuario.first_name} {miembro.participante.usuario.last_name} (Líder: {miembro.es_lider_proyecto})")
+    else:
+        print(f"DEBUG: Participación individual o sin proyecto grupal. es_grupal: {inscripcion.es_grupal}, proyecto: {inscripcion.proyecto_grupal}")
+    
+    # Pasar todas las variables al contexto
+    context = {
+        'datos': datos,
+        'miembros_proyecto': miembros_proyecto,
+        'calificaciones': calificaciones,
+        'promedio_calificacion': round(promedio_calificacion, 2) if promedio_calificacion else 0,
+        'total_calificaciones': total_calificaciones
+    }
 
-
+    return render(request, 'app_participantes/dashboard_participante.html', context)
 @login_required
 @user_passes_test(es_participante, login_url='login')
 @require_http_methods(["GET", "POST"])
@@ -94,24 +143,94 @@ def modificar_preinscripcion(request, evento_id):
         participante=participante,
         evento=evento
     )
-    if inscripcion.par_eve_estado != 'Pendiente':
-        messages.warning(request, "No puedes modificar esta inscripción.")
+    if inscripcion.par_eve_estado not in ['Pendiente', 'Aprobado']:
+        messages.warning(request, "No puedes modificar esta inscripción en el estado actual.")
         return redirect('dashboard_participante_evento', evento_id=evento_id)
+    
     if request.method == 'POST':
-        participante.par_nombre = request.POST.get('nombre')
-        participante.par_correo = request.POST.get('correo')
-        participante.par_telefono = request.POST.get('telefono')
+        # Actualizar información personal (siempre permitido)
+        request.user.first_name = request.POST.get('nombre')
+        request.user.email = request.POST.get('correo')
+        request.user.telefono = request.POST.get('telefono')
+        request.user.save()
+        
+        # Actualizar documento personal
         documento = request.FILES.get('documento')
         if documento:
             inscripcion.par_eve_documentos = documento
-        participante.save()
-        inscripcion.save()
-        messages.success(request, "Datos actualizados correctamente")
+            inscripcion.save()
+        
+        # Si es líder de proyecto grupal, puede actualizar información del proyecto
+        if inscripcion.es_grupal and inscripcion.es_lider_proyecto and inscripcion.proyecto_grupal:
+            proyecto = inscripcion.proyecto_grupal
+            proyecto.descripcion_proyecto = request.POST.get('descripcion_proyecto', proyecto.descripcion_proyecto)
+            
+            # Actualizar archivo del proyecto si se proporciona
+            archivo_proyecto = request.FILES.get('archivo_proyecto')
+            if archivo_proyecto:
+                proyecto.archivo_proyecto = archivo_proyecto
+            
+            proyecto.save()
+            messages.success(request, "Información personal y del proyecto actualizadas correctamente")
+        else:
+            messages.success(request, "Información personal actualizada correctamente")
+        
         return redirect('dashboard_participante_evento', evento_id=evento_id)
-    return render(request, 'modificar_preinscripcion_participante.html', {
+    
+    return render(request, 'app_participantes/modificar_preinscripcion_participante.html', {
         'participante': participante,
         'inscripcion': inscripcion,
         'evento': evento,
+    })
+
+
+@login_required
+@user_passes_test(es_participante, login_url='login')
+@require_http_methods(["GET", "POST"])
+def modificar_proyecto_grupal(request, evento_id):
+    """Vista específica para que los líderes modifiquen información del proyecto"""
+    participante = get_object_or_404(Participante, usuario=request.user)
+    evento = get_object_or_404(Evento, pk=evento_id)
+    inscripcion = get_object_or_404(
+        ParticipanteEvento,
+        participante=participante,
+        evento=evento
+    )
+    
+    # Verificar que sea proyecto grupal y que sea el líder
+    if not inscripcion.es_grupal or not inscripcion.es_lider_proyecto:
+        messages.error(request, "No tienes permisos para modificar este proyecto.")
+        return redirect('dashboard_participante_evento', evento_id=evento_id)
+    
+    if inscripcion.par_eve_estado not in ['Pendiente', 'Aprobado']:
+        messages.warning(request, "No puedes modificar este proyecto en el estado actual.")
+        return redirect('dashboard_participante_evento', evento_id=evento_id)
+    
+    proyecto = inscripcion.proyecto_grupal
+    
+    if request.method == 'POST':
+        proyecto.descripcion_proyecto = request.POST.get('descripcion_proyecto', proyecto.descripcion_proyecto)
+        
+        # Actualizar archivo del proyecto si se proporciona
+        archivo_proyecto = request.FILES.get('archivo_proyecto')
+        if archivo_proyecto:
+            proyecto.archivo_proyecto = archivo_proyecto
+        
+        proyecto.save()
+        messages.success(request, "Información del proyecto actualizada correctamente")
+        return redirect('dashboard_participante_evento', evento_id=evento_id)
+    
+    # Obtener miembros del proyecto
+    miembros_proyecto = ParticipanteEvento.objects.filter(
+        proyecto_grupal=proyecto,
+        evento=evento
+    ).select_related('participante__usuario')
+    
+    return render(request, 'app_participantes/modificar_proyecto_grupal.html', {
+        'proyecto_grupal': proyecto,
+        'inscripcion': inscripcion,
+        'evento': evento,
+        'miembros_proyecto': miembros_proyecto,
     })
 
 
@@ -129,7 +248,7 @@ def cancelar_inscripcion(request):
         messages.info(request, "Has cancelado tu inscripción exitosamente.")
     else:
         messages.warning(request, "No se encontró inscripción activa.")  
-    return render(request, 'preinscripcion_cancelada.html')
+    return render(request, 'app_participantes/preinscripcion_cancelada.html')
 
 
 @login_required
@@ -148,7 +267,7 @@ def ver_qr_participante(request, evento_id):
             'eve_lugar': evento.eve_lugar,
             'eve_descripcion': evento.eve_descripcion,
         }
-        return render(request, 'ver_qr_participante.html', {
+        return render(request, 'app_participantes/ver_qr_participante.html', {
             'datos': datos,
             'evento_id': evento_id
         })
@@ -213,7 +332,7 @@ def ver_evento_completo(request, evento_id):
         'categorias': categorias_data,
     }
 
-    return render(request, 'evento_completo_participante.html', {'evento': evento_data})
+    return render(request, 'app_participantes/evento_completo_participante.html', {'evento': evento_data})
 
 
 @login_required
@@ -226,7 +345,7 @@ def instrumento_evaluacion(request, evento_id):
         messages.warning(request, "No estás inscrito en este evento.")
         return redirect('dashboard_participante', evento_id=evento_id)
     criterios = Criterio.objects.filter(cri_evento_fk=evento)
-    return render(request, 'instrumento_evaluacion_participante.html', {
+    return render(request, 'app_participantes/instrumento_evaluacion_participante.html', {
         'evento': evento,
         'criterios': criterios,
     })
@@ -246,7 +365,7 @@ def ver_calificaciones_participante(request, evento_id):
         participante=participante,
         criterio__cri_evento_fk=evento
     )
-    return render(request, 'ver_calificaciones_participante.html', {
+    return render(request, 'app_participantes/ver_calificaciones_participante.html', {
         'calificaciones': calificaciones,
         'evento': evento,
     })

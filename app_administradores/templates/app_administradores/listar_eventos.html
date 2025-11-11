@@ -74,6 +74,35 @@
                                         🔄 <span>Reabrir</span>
                                     </a>
                                 {% endif %}
+                                
+                                <!-- Controles específicos para eventos públicos -->
+                                {% if evento.eve_tipo == 'publico' and evento.eve_estado|lower == 'aprobado' %}
+                                    <!-- Controles Evaluadores -->
+                                    {% if evento.eve_inscripcion_evaluadores == 'Si' %}
+                                        <a href="{% url 'cerrar_inscripcion_evaluadores' evento.eve_id %}" 
+                                           class="btn btn-sm btn-outline-info d-flex align-items-center gap-1">
+                                            👨‍⚖️❌ <span>Cerrar Evaluadores</span>
+                                        </a>
+                                    {% else %}
+                                        <a href="{% url 'abrir_inscripcion_evaluadores' evento.eve_id %}" 
+                                           class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1">
+                                            👨‍⚖️✅ <span>Abrir Evaluadores</span>
+                                        </a>
+                                    {% endif %}
+                                    
+                                    <!-- Controles Participantes -->
+                                    {% if evento.eve_inscripcion_participantes == 'Si' %}
+                                        <a href="{% url 'cerrar_inscripcion_participantes' evento.eve_id %}" 
+                                           class="btn btn-sm btn-outline-info d-flex align-items-center gap-1">
+                                            🏆❌ <span>Cerrar Participantes</span>
+                                        </a>
+                                    {% else %}
+                                        <a href="{% url 'abrir_inscripcion_participantes' evento.eve_id %}" 
+                                           class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1">
+                                            🏆✅ <span>Abrir Participantes</span>
+                                        </a>
+                                    {% endif %}
+                                {% endif %}
                             </div>
 
                             <!-- Bloque Gestión / Consultas -->

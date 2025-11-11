@@ -49,7 +49,7 @@
                         <div class="col-12">
                             <h4 class="fw-bold text-primary mb-3">{{ datos.eve_nombre }}</h4>
                             
-                            <div class="mb-4">
+                            <div class="mb-3">
                                 <div class="d-flex align-items-center justify-content-between">
                                     <span class="fw-medium text-muted">Estado de Participación:</span>
                                     <span class="badge fs-6 px-3 py-2
@@ -63,6 +63,75 @@
                                     </span>
                                 </div>
                             </div>
+
+                            <div class="mb-4">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <span class="fw-medium text-muted">Tipo de Participación:</span>
+                                    <span class="badge fs-6 px-3 py-2 {% if datos.es_grupal %}bg-info{% else %}bg-secondary{% endif %}">
+                                        <i class="bi {% if datos.es_grupal %}bi-people-fill{% else %}bi-person-fill{% endif %} me-1"></i>
+                                        {% if datos.es_grupal %}Grupal{% else %}Individual{% endif %}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {% if datos.es_grupal %}
+                            <div class="mb-4">
+                                <div class="card border-info">
+                                    <div class="card-header bg-info bg-opacity-10 border-info">
+                                        <h6 class="fw-bold mb-0 text-info">
+                                            <i class="bi bi-diagram-3-fill me-2"></i>
+                                            Información del Proyecto Grupal
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="mb-2">
+                                                    <span class="fw-medium text-muted">Tu Rol:</span>
+                                                    <span class="badge {% if datos.es_lider_proyecto %}bg-warning text-dark{% else %}bg-light text-dark{% endif %} ms-1">
+                                                        {% if datos.es_lider_proyecto %}
+                                                            <i class="bi bi-star-fill me-1"></i>Líder del Proyecto
+                                                        {% else %}
+                                                            <i class="bi bi-person me-1"></i>Miembro
+                                                        {% endif %}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="mb-2">
+                                                    <span class="fw-medium text-muted">Miembros del Proyecto:</span>
+                                                    <span class="fw-bold">{{ miembros_proyecto|length }}</span>
+                                                </div>
+                                            </div>
+                                            {% if promedio_calificacion %}
+                                            <div class="col-md-6">
+                                                <div class="mb-2">
+                                                    <span class="fw-medium text-muted">Calificación Promedio:</span>
+                                                    <span class="fw-bold text-success">{{ promedio_calificacion|floatformat:2 }}/5.0</span>
+                                                </div>
+                                            </div>
+                                            {% endif %}
+                                        </div>
+                                        
+                                        {% if miembros_proyecto %}
+                                        <div class="mt-3">
+                                            <h6 class="fw-bold mb-2">Miembros del Equipo:</h6>
+                                            <div class="row">
+                                                {% for miembro in miembros_proyecto %}
+                                                <div class="col-md-6 mb-2">
+                                                    <div class="d-flex align-items-center">
+                                                        <i class="bi {% if miembro.es_lider_proyecto %}bi-star-fill text-warning{% else %}bi-person-circle text-muted{% endif %} me-2"></i>
+                                                        <span class="{% if miembro.es_lider_proyecto %}fw-bold{% endif %}">{{ miembro.par_nombre }}</span>
+                                                    </div>
+                                                </div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
 
                             {% if datos.par_eve_estado == 'Aprobado' %}
                                 <div class="alert alert-success border-0 mb-0">
@@ -183,7 +252,7 @@
                                 <a href="{% url 'calificaciones_participante' datos.eve_id  %}" 
                                    class="btn btn-primary w-100 py-3 fw-medium">
                                     <i class="bi bi-star me-2"></i>
-                                    Mis Calificaciones
+                                    {% if datos.es_grupal %}Calificaciones del Proyecto{% else %}Mis Calificaciones{% endif %}
                                 </a>
                             </div>
                             {% if datos.eve_programacion %}
@@ -196,6 +265,30 @@
                             </div>
                             {% endif %}
                         </div>
+
+                        {% if datos.es_grupal and datos.es_lider_proyecto %}
+                        <!-- Acciones específicas para líderes de proyecto -->
+                        <div class="row g-3 mt-2">
+                            <div class="col-12">
+                                <div class="alert alert-info border-0">
+                                    <div class="d-flex align-items-center">
+                                        <i class="bi bi-info-circle-fill me-3" style="font-size: 1.2rem;"></i>
+                                        <div>
+                                            <h6 class="fw-bold mb-1">Gestión de Proyecto Grupal</h6>
+                                            <p class="mb-0">Como líder del proyecto, puedes modificar la información del proyecto grupal.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6">
+                                <a href="{% url 'modificar_proyecto_grupal' datos.eve_id %}" 
+                                   class="btn btn-warning w-100 py-3 fw-medium">
+                                    <i class="bi bi-pencil-square me-2"></i>
+                                    Modificar Proyecto Grupal
+                                </a>
+                            </div>
+                        </div>
+                        {% endif %}
 
                         <!-- Segunda fila para archivos adicionales -->
                         {% if datos.eve_informacion_tecnica or datos.eve_memorias %}

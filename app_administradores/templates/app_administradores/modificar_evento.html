@@ -51,6 +51,22 @@
                     <option value="NO" {% if evento.eve_tienecosto == "NO" %}selected{% endif %}>No</option>
                 </select>
             </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Tipo de Evento</label>
+                <select name="tipo" class="form-select" required>
+                    <option value="publico" {% if evento.eve_tipo == "publico" %}selected{% endif %}>Público</option>
+                    <option value="restringido" {% if evento.eve_tipo == "restringido" %}selected{% endif %}>Restringido</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">¿Es Multidisciplinario?</label>
+            <select name="es_multidisciplinario" id="multidisciplinario" class="form-select" required>
+                <option value="No" {% if evento.eve_es_multidisciplinario == "No" %}selected{% endif %}>No</option>
+                <option value="Si" {% if evento.eve_es_multidisciplinario == "Si" %}selected{% endif %}>Sí</option>
+            </select>
+            <div class="form-text">Si es multidisciplinario, podrás agregar múltiples categorías.</div>
         </div>
 
         <!-- Áreas y Categorías -->
@@ -80,7 +96,7 @@
                 </div>
                 {% endfor %}
             </div>
-            <button type="button" class="btn btn-secondary mt-2" id="agregarAreaCategoria">Agregar otra categoría</button>
+            <button type="button" class="btn btn-secondary mt-2" id="agregarAreaCategoria" style="display: none;">Agregar otra categoría</button>
         </div>
 
         <div class="mb-3">
@@ -121,15 +137,34 @@
 
     function actualizarVisibilidadBotones() {
         const items = document.querySelectorAll('.area-categoria-item');
-        items.forEach((item, index) => {
+        const esMultidisciplinario = document.getElementById('multidisciplinario').value === 'Si';
+        const btnAgregar = document.getElementById('agregarAreaCategoria');
+        
+        // Mostrar/ocultar botón de agregar según si es multidisciplinario
+        if (esMultidisciplinario) {
+            btnAgregar.style.display = 'inline-block';
+        } else {
+            btnAgregar.style.display = 'none';
+            // Si no es multidisciplinario, mantener solo el primer elemento
+            while (items.length > 1) {
+                items[items.length - 1].remove();
+            }
+        }
+        
+        // Actualizar botones de eliminar
+        const itemsActualizados = document.querySelectorAll('.area-categoria-item');
+        itemsActualizados.forEach((item, index) => {
             const btn = item.querySelector('.btn-remove');
-            if (items.length > 1) {
+            if (itemsActualizados.length > 1 && esMultidisciplinario) {
                 btn.classList.remove('d-none');
             } else {
                 btn.classList.add('d-none');
             }
         });
     }
+
+    // Escuchar cambios en el campo multidisciplinario
+    document.getElementById('multidisciplinario').addEventListener('change', actualizarVisibilidadBotones);
 
     document.addEventListener('change', function (e) {
         if (e.target.classList.contains('area-select')) {
@@ -139,6 +174,9 @@
     });
 
     document.getElementById('agregarAreaCategoria').addEventListener('click', function () {
+        const esMultidisciplinario = document.getElementById('multidisciplinario').value === 'Si';
+        if (!esMultidisciplinario) return; // No permitir agregar si no es multidisciplinario
+        
         const container = document.getElementById('areaCategoriaContainer');
         const nuevoItem = container.querySelector('.area-categoria-item').cloneNode(true);
 

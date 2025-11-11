@@ -21,6 +21,18 @@ class Categoria(models.Model):
     cat_area_fk = models.ForeignKey(Area, on_delete=models.CASCADE, related_name='categorias')
 
 
+📦 App: admin/models.py
+
+from django.db import models
+from app_usuarios.models import Usuario
+
+class Superadmin(models.Model):
+    usuario = models.OneToOneField(Usuario, on_delete=models.CASCADE, null=True, blank=True, related_name='superadmin')
+
+    def __str__(self):
+        return f"{self.usuario.username}"
+
+
 📦 App: administradores/models.py
 
 import uuid
@@ -95,8 +107,8 @@ class CodigoInvitacionEvento(models.Model):
 📦 App: eventos/models.py
 
 from django.db import models
-from administradores.models import AdministradorEvento
-from areas.models import Categoria
+from app_administradores.models import AdministradorEvento
+from app_areas.models import Categoria
 
 class Evento(models.Model):
     eve_id = models.AutoField(primary_key=True)
@@ -110,6 +122,10 @@ class Evento(models.Model):
     eve_imagen = models.ImageField(upload_to='eventos/imagenes/', null=True, blank=True)
     eve_capacidad = models.IntegerField()
     eve_tienecosto = models.CharField(max_length=2)
+    eve_tipo = models.CharField(max_length=20, choices=[('publico', 'Público'), ('restringido', 'Restringido')], default='publico')
+    eve_es_multidisciplinario = models.CharField(max_length=2, choices=[('Si', 'Sí'), ('No', 'No')], default='No')
+    eve_inscripcion_evaluadores = models.CharField(max_length=2, choices=[('Si', 'Sí'), ('No', 'No')], default='Si')
+    eve_inscripcion_participantes = models.CharField(max_length=2, choices=[('Si', 'Sí'), ('No', 'No')], default='Si')
     eve_administrador_fk = models.ForeignKey(AdministradorEvento, on_delete=models.CASCADE, related_name='eventos')
     eve_programacion = models.FileField(upload_to='eventos/programaciones/', null=True, blank=True)
     eve_memorias = models.FileField(upload_to='eventos/memorias/', null=True, blank=True)
@@ -128,7 +144,7 @@ class ConfiguracionCertificado(models.Model):
         ('asistencia', 'Asistencia'),
         ('participacion', 'Participación'),
         ('evaluador', 'Evaluador'),
-        ('premiacion', 'Premiacion'),
+        ('premiacion', 'Premiación'),
     ]
     PLANTILLA_CHOICES = [
         ('elegante', 'Elegante'),
@@ -181,6 +197,7 @@ class AsistenteEvento(models.Model):
 from django.db import models
 from app_eventos.models import Evento
 from app_usuarios.models import Usuario
+from app_areas.models import Categoria
 
 class Participante(models.Model):
     usuario = models.OneToOneField(Usuario, on_delete=models.CASCADE, related_name='participante')
@@ -188,7 +205,22 @@ class Participante(models.Model):
     def __str__(self):
         return f"{self.usuario.username}"
 
+
+class ProyectoGrupal(models.Model):
+    """Modelo para manejar proyectos grupales en eventos"""
+    nombre_proyecto = models.CharField(max_length=200)
+    descripcion_proyecto = models.TextField(blank=True, null=True)
+    evento = models.ForeignKey(Evento, on_delete=models.CASCADE)
+    archivo_proyecto = models.FileField(upload_to='proyectos/archivos/', null=True, blank=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    estado = models.CharField(max_length=45, default='Pendiente')
+    
+    def __str__(self):
+        return f"{self.nombre_proyecto} - {self.evento.eve_nombre}"
+
+
 class ParticipanteEvento(models.Model):
+    """Relación entre Participante y Evento - puede ser individual o grupal"""
     participante = models.ForeignKey(Participante, on_delete=models.CASCADE)
     evento = models.ForeignKey(Evento, on_delete=models.CASCADE)
     par_eve_fecha_hora = models.DateTimeField()
@@ -197,7 +229,12 @@ class ParticipanteEvento(models.Model):
     par_eve_qr = models.ImageField(upload_to='participantes/qr/', null=True, blank=True)
     par_eve_valor = models.FloatField(null=True, blank=True)
     confirmado = models.BooleanField(default=False)
- 
+    
+    # Campos para proyectos grupales
+    es_grupal = models.BooleanField(default=False)
+    proyecto_grupal = models.ForeignKey(ProyectoGrupal, on_delete=models.CASCADE, null=True, blank=True)
+    es_lider_proyecto = models.BooleanField(default=False)  # Solo uno por proyecto
+
     class Meta:
         unique_together = (('participante', 'evento'),)
 
@@ -208,6 +245,7 @@ from django.db import models
 from app_eventos.models import Evento
 from app_participantes.models import Participante
 from app_usuarios.models import Usuario
+from app_areas.models import Categoria
 
 class Evaluador(models.Model):
     usuario = models.OneToOneField(Usuario, on_delete=models.CASCADE, related_name='evaluador')
@@ -215,7 +253,9 @@ class Evaluador(models.Model):
     def __str__(self):
         return f"{self.usuario.username}"
 
+
 class EvaluadorEvento(models.Model):
+    """Relación entre Evaluador y Evento - ahora con categoría específica para eventos multidisciplinarios"""
     evaluador = models.ForeignKey(Evaluador, on_delete=models.CASCADE)
     evento = models.ForeignKey(Evento, on_delete=models.CASCADE)
     eva_eve_documentos = models.FileField(upload_to='evaluadores/documentos/', null=True, blank=True)
@@ -223,12 +263,17 @@ class EvaluadorEvento(models.Model):
     eva_eve_estado = models.CharField(max_length=45)
     eva_eve_qr = models.ImageField(upload_to='evaluadores/qr/', null=True, blank=True)
     confirmado = models.BooleanField(default=False)
+    
+    # Campo para eventos multidisciplinarios
+    categoria_evaluacion = models.ForeignKey(Categoria, on_delete=models.SET_NULL, null=True, blank=True, 
+                                           help_text="Categoría específica que evalúa en eventos multidisciplinarios")
 
     class Meta:
         unique_together = (('evaluador', 'evento'),)
 
     def __str__(self):
-        return f"{self.evaluador.get_full_name()} - {self.evento.eve_nombre}"
+        categoria_info = f" - {self.categoria_evaluacion.cat_nombre}" if self.categoria_evaluacion else ""
+        return f"{self.evaluador.usuario.first_name} {self.evaluador.usuario.last_name} - {self.evento.eve_nombre}{categoria_info}"
 
 class Criterio(models.Model):
     cri_id = models.AutoField(primary_key=True)

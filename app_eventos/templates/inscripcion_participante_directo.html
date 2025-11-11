@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inscripción como Participante - {{ evento.eve_nombre }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .form-section {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .required-field::after {
+            content: " *";
+            color: red;
+        }
+        
+        .proyecto-grupal {
+            display: none;
+            border: 2px solid #28a745;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            background-color: #f8fff9;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <div class="container my-5">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <!-- Encabezado del evento -->
+                <div class="card mb-4">
+                    <div class="card-header bg-success text-white">
+                        <h3 class="mb-0">Inscripción como Participante</h3>
+                    </div>
+                    <div class="card-body">
+                        <h5>{{ evento.eve_nombre }}</h5>
+                        <p class="mb-1"><strong>Fecha:</strong> {{ evento.eve_fecha_inicio|date:"d/m/Y" }} al {{ evento.eve_fecha_fin|date:"d/m/Y" }}</p>
+                        <p class="mb-0"><strong>Lugar:</strong> {{ evento.eve_lugar }}</p>
+                    </div>
+                </div>
+                
+                <!-- Formulario de inscripción -->
+                <form method="POST" enctype="multipart/form-data" id="formInscripcionParticipante">
+                    {% csrf_token %}
+                    
+                    <!-- Información Personal -->
+                    <div class="form-section">
+                        <h5 class="mb-3 text-success">Información Personal</h5>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="par_id" class="form-label required-field">Documento de Identidad</label>
+                                    <input type="text" class="form-control" id="par_id" name="par_id" required>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="par_nombres" class="form-label required-field">Nombres</label>
+                                    <input type="text" class="form-control" id="par_nombres" name="par_nombres" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="par_apellidos" class="form-label required-field">Apellidos</label>
+                                    <input type="text" class="form-control" id="par_apellidos" name="par_apellidos" required>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="par_correo" class="form-label required-field">Correo Electrónico</label>
+                                    <input type="email" class="form-control" id="par_correo" name="par_correo" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="par_telefono" class="form-label">Teléfono</label>
+                                    <input type="tel" class="form-control" id="par_telefono" name="par_telefono">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="documentos" class="form-label">Documentos de Soporte (Opcional)</label>
+                            <input type="file" class="form-control" id="documentos" name="documentos" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
+                            <div class="form-text">Puedes adjuntar documentos relevantes para tu participación.</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tipo de Participación -->
+                    <div class="form-section">
+                        <h5 class="mb-3 text-success">Tipo de Participación</h5>
+                        
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="tipo_participacion" 
+                                       id="participacion_individual" value="individual" checked>
+                                <label class="form-check-label" for="participacion_individual">
+                                    <strong>Participación Individual</strong>
+                                    <br><small class="text-muted">Presentarás tu propio proyecto de manera individual</small>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="tipo_participacion" 
+                                       id="participacion_grupal" value="grupal">
+                                <label class="form-check-label" for="participacion_grupal">
+                                    <strong>Participación Grupal</strong>
+                                    <br><small class="text-muted">Formarás parte de un equipo para presentar un proyecto conjunto</small>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Sección de proyecto grupal -->
+                        <div class="proyecto-grupal" id="seccionProyectoGrupal">
+                            <h6 class="text-success">Información del Proyecto Grupal</h6>
+                            
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="es_lider_proyecto" 
+                                           name="es_lider_proyecto" value="1">
+                                    <label class="form-check-label" for="es_lider_proyecto">
+                                        <strong>Soy el líder del proyecto</strong>
+                                        <br><small class="text-muted">Como líder, serás responsable de subir los archivos del proyecto y coordinar el equipo</small>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="mb-3">
+                                        <label for="nombre_proyecto" class="form-label required-field">Nombre del Proyecto</label>
+                                        <input type="text" class="form-control" id="nombre_proyecto" name="nombre_proyecto">
+                                        <div class="form-text">Si ya existe un proyecto con este nombre, te unirás al equipo existente</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="descripcion_proyecto" class="form-label">Descripción del Proyecto</label>
+                                <textarea class="form-control" id="descripcion_proyecto" name="descripcion_proyecto" 
+                                         rows="4" placeholder="Describe brevemente el proyecto grupal..."></textarea>
+                            </div>
+                            
+                            <div class="mb-3" id="archivoProyectoDiv" style="display: none;">
+                                <label for="archivo_proyecto" class="form-label">Archivo del Proyecto</label>
+                                <input type="file" class="form-control" id="archivo_proyecto" name="archivo_proyecto" 
+                                       accept=".pdf,.doc,.docx,.ppt,.pptx,.zip,.rar">
+                                <div class="form-text">Como líder del proyecto, puedes subir los archivos principales del proyecto</div>
+                            </div>
+                            
+                            <!-- Sección de miembros del equipo -->
+                            <div class="mb-3" id="miembrosEquipoDiv" style="display: none;">
+                                <h6 class="text-success">Miembros del Equipo</h6>
+                                <p class="text-muted small">Como líder, puedes inscribir a los demás miembros de tu equipo:</p>
+                                
+                                <div id="miembrosContainer">
+                                    <!-- Los miembros se añadirán aquí dinámicamente -->
+                                </div>
+                                
+                                <button type="button" class="btn btn-outline-success btn-sm" id="btnAgregarMiembro">
+                                    <i class="bi bi-person-plus"></i> Agregar Miembro del Equipo
+                                </button>
+                                
+                                <div class="alert alert-info mt-3">
+                                    <small>
+                                        <i class="bi bi-info-circle"></i>
+                                        <strong>Nota:</strong> Todos los miembros del equipo recibirán un correo de confirmación 
+                                        y deberán aceptar su participación en el proyecto.
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Términos y condiciones -->
+                    <div class="form-section">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="acepto_terminos" name="acepto_terminos" required>
+                            <label class="form-check-label" for="acepto_terminos">
+                                Acepto los términos y condiciones de participación en el evento
+                            </label>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <small class="text-muted">
+                                Al inscribirte como participante, te comprometes a:
+                                <ul class="mt-2">
+                                    <li>Presentar tu proyecto en las fechas y horarios establecidos</li>
+                                    <li>Cumplir con los requisitos técnicos y de contenido del evento</li>
+                                    <li>Participar en todas las actividades programadas</li>
+                                    <li>Mantener un comportamiento respetuoso y profesional</li>
+                                </ul>
+                            </small>
+                        </div>
+                    </div>
+                    
+                    <!-- Botones de acción -->
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'detalle_evento_visitante' evento.eve_id %}" class="btn btn-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-success">Inscribirse como Participante</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Manejar mostrar/ocultar sección de proyecto grupal
+        const radioIndividual = document.getElementById('participacion_individual');
+        const radioGrupal = document.getElementById('participacion_grupal');
+        const seccionProyecto = document.getElementById('seccionProyectoGrupal');
+        const nombreProyecto = document.getElementById('nombre_proyecto');
+        
+        function toggleProyectoGrupal() {
+            if (radioGrupal.checked) {
+                seccionProyecto.style.display = 'block';
+                nombreProyecto.setAttribute('required', 'required');
+            } else {
+                seccionProyecto.style.display = 'none';
+                nombreProyecto.removeAttribute('required');
+                nombreProyecto.value = '';
+                document.getElementById('descripcion_proyecto').value = '';
+                document.getElementById('es_lider_proyecto').checked = false;
+                toggleArchivoProyecto();
+            }
+        }
+        
+        radioIndividual.addEventListener('change', toggleProyectoGrupal);
+        radioGrupal.addEventListener('change', toggleProyectoGrupal);
+        
+        // Manejar mostrar archivo de proyecto solo si es líder
+        const checkboxLider = document.getElementById('es_lider_proyecto');
+        const archivoProyectoDiv = document.getElementById('archivoProyectoDiv');
+        const miembrosEquipoDiv = document.getElementById('miembrosEquipoDiv');
+        
+        function toggleArchivoProyecto() {
+            if (checkboxLider.checked && radioGrupal.checked) {
+                archivoProyectoDiv.style.display = 'block';
+                miembrosEquipoDiv.style.display = 'block';
+            } else {
+                archivoProyectoDiv.style.display = 'none';
+                miembrosEquipoDiv.style.display = 'none';
+                document.getElementById('archivo_proyecto').value = '';
+                // Limpiar miembros del equipo
+                document.getElementById('miembrosContainer').innerHTML = '';
+                contadorMiembros = 0;
+            }
+        }
+        
+        checkboxLider.addEventListener('change', toggleArchivoProyecto);
+        
+        // Manejo de miembros del equipo
+        let contadorMiembros = 0;
+        
+        function agregarMiembro() {
+            contadorMiembros++;
+            const container = document.getElementById('miembrosContainer');
+            
+            const miembroDiv = document.createElement('div');
+            miembroDiv.className = 'card mb-3';
+            miembroDiv.innerHTML = `
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">Miembro ${contadorMiembros}</h6>
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="eliminarMiembro(this)">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Documento de Identidad *</label>
+                                <input type="text" class="form-control" name="miembro_documento[]" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Correo Electrónico *</label>
+                                <input type="email" class="form-control" name="miembro_correo[]" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Nombres *</label>
+                                <input type="text" class="form-control" name="miembro_nombres[]" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Apellidos *</label>
+                                <input type="text" class="form-control" name="miembro_apellidos[]" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Teléfono</label>
+                        <input type="tel" class="form-control" name="miembro_telefono[]">
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(miembroDiv);
+        }
+        
+        function eliminarMiembro(button) {
+            const miembroDiv = button.closest('.card');
+            miembroDiv.remove();
+            
+            // Renumerar los miembros
+            const miembros = document.querySelectorAll('#miembrosContainer .card');
+            miembros.forEach((miembro, index) => {
+                const titulo = miembro.querySelector('.card-header h6');
+                titulo.textContent = `Miembro ${index + 1}`;
+            });
+        }
+        
+        document.getElementById('btnAgregarMiembro').addEventListener('click', agregarMiembro);
+        
+        // Validación del formulario
+        document.getElementById('formInscripcionParticipante').addEventListener('submit', function(e) {
+            var requiredFields = this.querySelectorAll('[required]');
+            var isValid = true;
+            
+            requiredFields.forEach(function(field) {
+                if (!field.value.trim()) {
+                    field.classList.add('is-invalid');
+                    isValid = false;
+                } else {
+                    field.classList.remove('is-invalid');
+                }
+            });
+            
+            // Validar email
+            var email = document.getElementById('par_correo');
+            var emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (email.value && !emailPattern.test(email.value)) {
+                email.classList.add('is-invalid');
+                isValid = false;
+            }
+            
+            if (!isValid) {
+                e.preventDefault();
+                alert('Por favor completa todos los campos obligatorios correctamente.');
+            }
+        });
+        
+        // Limpiar validación al escribir
+        document.querySelectorAll('input, select, textarea').forEach(function(element) {
+            element.addEventListener('input', function() {
+                this.classList.remove('is-invalid');
+            });
+        });
+        
+        // Inicializar estado
+        toggleProyectoGrupal();
+    </script>
+</body>
+</html>

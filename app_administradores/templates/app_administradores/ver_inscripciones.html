@@ -3,25 +3,43 @@
 {% block title %}Inscripciones - {{ evento.eve_nombre }}{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <h2 class="mb-4">Inscripciones - {{ evento.eve_nombre }}</h2>
-
-    <div class="row text-center">
-        <div class="col-md-4 mb-3">
-            <a href="{% url 'ver_asistentes_evento' evento.eve_id %}" class="btn btn-outline-primary btn-lg w-100 p-4">
-                👥 Gestionar Asistentes
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h2 class="mb-0 fw-bold text-dark"><i class="bi bi-clipboard-data"></i> Inscripciones - {{ evento.eve_nombre }}</h2>
+        <a href="{% url 'listar_eventos' %}" class="btn btn-outline-secondary rounded-pill d-flex align-items-center gap-2">
+            <i class="bi bi-arrow-left"></i> Volver a eventos
+        </a>
+    </div>
+    <div class="row text-center g-4">
+        <div class="col-md-4">
+            <a href="{% url 'ver_asistentes_evento' evento.eve_id %}" class="btn btn-light border-0 shadow-sm h-100 w-100 py-4 d-flex flex-column align-items-center justify-content-center card-hover">
+                <span class="display-5 mb-2">👥</span>
+                <span class="fw-semibold fs-5">Gestionar Asistentes</span>
             </a>
         </div>
-        <div class="col-md-4 mb-3">
-            <a href="{% url 'ver_participantes_evento' evento.eve_id %}" class="btn btn-outline-success btn-lg w-100 p-4">
-                🧑‍🎓 Gestionar Participantes
+        <div class="col-md-4">
+            <a href="{% url 'ver_participantes_evento' evento.eve_id %}" class="btn btn-light border-0 shadow-sm h-100 w-100 py-4 d-flex flex-column align-items-center justify-content-center card-hover">
+                <span class="display-5 mb-2">🧑‍🎓</span>
+                <span class="fw-semibold fs-5">Gestionar Participantes</span>
             </a>
         </div>
-        <div class="col-md-4 mb-3">
-            <a href="{% url 'gestion_evaluadores' evento.eve_id %}" class="btn btn-outline-warning btn-lg w-100 p-4">
-                🧑‍⚖️ Gestionar Evaluadores
+        <div class="col-md-4">
+            <a href="{% url 'gestion_evaluadores' evento.eve_id %}" class="btn btn-light border-0 shadow-sm h-100 w-100 py-4 d-flex flex-column align-items-center justify-content-center card-hover">
+                <span class="display-5 mb-2">🧑‍⚖️</span>
+                <span class="fw-semibold fs-5">Gestionar Evaluadores</span>
             </a>
         </div>
     </div>
 </div>
+<style>
+.card-hover {
+    transition: box-shadow 0.2s, transform 0.2s;
+    border-radius: 1.2rem;
+}
+.card-hover:hover {
+    box-shadow: 0 8px 32px 0 #28a74522;
+    transform: translateY(-4px) scale(1.03);
+    background: #f8f9fa;
+}
+</style>
 {% endblock %}

@@ -116,6 +116,23 @@
                                 </select>
                                 <div class="form-text">Selecciona "Sí" si el evento requiere pago para inscribirse.</div>
                         </div>
+                        <div class="col-md-6 mb-3">
+                                <label class="form-label">Tipo de Evento <span style="color:#3182ce">*</span></label>
+                                <select name="tipo" class="form-select" required>
+                                        <option value="publico">Público</option>
+                                        <option value="restringido">Restringido</option>
+                                </select>
+                                <div class="form-text">Público: abierto a todos. Restringido: solo por invitación.</div>
+                        </div>
+                </div>
+
+                <div class="mb-3">
+                        <label class="form-label">¿Es Multidisciplinario? <span style="color:#3182ce">*</span></label>
+                        <select name="es_multidisciplinario" id="multidisciplinario" class="form-select" required>
+                                <option value="No">No</option>
+                                <option value="Si">Sí</option>
+                        </select>
+                        <div class="form-text">Si es multidisciplinario, podrás agregar múltiples categorías.</div>
                 </div>
 
                 <div class="section-title">Áreas y Categorías</div>
@@ -143,7 +160,7 @@
                     </div>
                 </div>
             </div>
-            <button type="button" class="btn btn-secondary mt-2" id="agregarAreaCategoria">Agregar otra categoría</button>
+            <button type="button" class="btn btn-secondary mt-2" id="agregarAreaCategoria" style="display: none;">Agregar otra categoría</button>
         </div>
 
         <!-- Archivos -->
@@ -184,15 +201,34 @@
 
     function actualizarVisibilidadBotones() {
         const items = document.querySelectorAll('.area-categoria-item');
-        items.forEach((item, index) => {
+        const esMultidisciplinario = document.getElementById('multidisciplinario').value === 'Si';
+        const btnAgregar = document.getElementById('agregarAreaCategoria');
+        
+        // Mostrar/ocultar botón de agregar según si es multidisciplinario
+        if (esMultidisciplinario) {
+            btnAgregar.style.display = 'inline-block';
+        } else {
+            btnAgregar.style.display = 'none';
+            // Si no es multidisciplinario, mantener solo el primer elemento
+            while (items.length > 1) {
+                items[items.length - 1].remove();
+            }
+        }
+        
+        // Actualizar botones de eliminar
+        const itemsActualizados = document.querySelectorAll('.area-categoria-item');
+        itemsActualizados.forEach((item, index) => {
             const btn = item.querySelector('.btn-remove');
-            if (items.length > 1) {
+            if (itemsActualizados.length > 1 && esMultidisciplinario) {
                 btn.classList.remove('d-none');
             } else {
                 btn.classList.add('d-none');
             }
         });
     }
+
+    // Escuchar cambios en el campo multidisciplinario
+    document.getElementById('multidisciplinario').addEventListener('change', actualizarVisibilidadBotones);
 
     document.addEventListener('change', function (e) {
         if (e.target.classList.contains('area-select')) {
@@ -202,6 +238,9 @@
     });
 
     document.getElementById('agregarAreaCategoria').addEventListener('click', function () {
+        const esMultidisciplinario = document.getElementById('multidisciplinario').value === 'Si';
+        if (!esMultidisciplinario) return; // No permitir agregar si no es multidisciplinario
+        
         const container = document.getElementById('areaCategoriaContainer');
         const nuevoItem = container.querySelector('.area-categoria-item').cloneNode(true);
 
