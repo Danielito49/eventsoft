@@ -169,17 +169,18 @@ DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
 
 # Base de datos MySQL
-DB_NAME=eventsoft
-DB_USER=eventsoft_user
-DB_PASSWORD=tu_contraseña_segura
-DB_HOST=localhost
-DB_PORT=3306
+MYSQL_DATABASE=eventsoft
+MYSQL_USER=eventsoft_user
+MYSQL_PASSWORD=tu_contraseña_segura
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
 
 # Email (opcional para desarrollo)
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
 EMAIL_HOST_USER=tu_correo@gmail.com
 EMAIL_HOST_PASSWORD=tu_contraseña_de_aplicacion
+DEFAULT_FROM_EMAIL=tu_correo@gmail.com
 
 # Brevo API (opcional, para envío de emails en producción)
 # BREVO_API_KEY=tu_api_key_de_brevo

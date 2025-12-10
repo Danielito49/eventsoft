@@ -80,11 +80,11 @@ WSGI_APPLICATION = 'pr_eventsoft.wsgi.application'
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": os.getenv('MYSQL_DATABASE', 'eventsoft_prueba'),
+        "NAME": os.getenv('MYSQL_DATABASE', 'eventsoft'),
         "USER": os.getenv('MYSQL_USER', 'root'),
-        "PASSWORD": os.getenv('MYSQL_PASSWORD', '0409'),
-        "HOST": os.getenv('MYSQL_HOST', '127.0.0.1'),
-        "PORT": os.getenv('MYSQL_PORT', '3307'),
+        "PASSWORD": os.getenv('MYSQL_PASSWORD', ''),
+        "HOST": os.getenv('MYSQL_HOST', 'localhost'),
+        "PORT": os.getenv('MYSQL_PORT', '3306'),
     }
 }
 
@@ -161,10 +161,10 @@ else:
     EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
     EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
     EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
-    EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'daviladani888@gmail.com')
-    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', 'hbqp ctml okwd wueg')
+    EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'daviladani888@gmail.com')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@eventsoft.com')
 DEFAULT_FROM_NAME = os.getenv('DEFAULT_FROM_NAME', 'EventSoft')
 
 # Configuración de seguridad para producción
