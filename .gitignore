@@ -145,10 +145,5 @@ staticfiles/
 DEPLOY.md
 contexto.md
 
-# Archivos de media de prueba
-media/participantes/
-media/evaluadores/
-media/asistentes/
-media/eventos/
-media/proyectos/
-media/certificados/
+# Archivos de media (subidos por usuarios)
+media/
