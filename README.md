@@ -118,7 +118,7 @@ Sistema web desarrollado en Django para la gestión integral de eventos académi
 ### 📋 Requisitos Previos
 
 - Python 3.10 o superior
-- MySQL 8.0 o superior
+- MySQL 8.0 o superior (o XAMPP/WAMP que incluye MySQL)
 - Git
 - pip (gestor de paquetes de Python)
 
@@ -151,51 +151,171 @@ pip install -r requirements.txt
 
 ### 🗄️ Paso 4: Configurar Base de Datos MySQL
 
-1. **Crear la base de datos en MySQL:**
+#### Opción A: Usar usuario root existente (más fácil para desarrollo)
+
+Si ya tienes MySQL instalado (con XAMPP, WAMP, o instalación directa), solo necesitas crear la base de datos:
+
+1. Abre la terminal de MySQL o phpMyAdmin
+2. Ejecuta:
+```sql
+CREATE DATABASE eventsoft CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+Luego usa tu usuario `root` existente en el archivo `.env`.
+
+#### Opción B: Crear un usuario específico (recomendado para producción)
 
 ```sql
 CREATE DATABASE eventsoft CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'eventsoft_user'@'localhost' IDENTIFIED BY 'tu_contraseña_segura';
+CREATE USER 'eventsoft_user'@'localhost' IDENTIFIED BY 'MiContraseñaSegura123';
 GRANT ALL PRIVILEGES ON eventsoft.* TO 'eventsoft_user'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-2. **Crear archivo `.env` en la raíz del proyecto:**
+> 💡 En este caso, `MiContraseñaSegura123` es una contraseña **nueva que tú inventas** para el nuevo usuario `eventsoft_user`.
+
+---
+
+### 🔐 Paso 5: Crear archivo de Variables de Entorno (.env)
+
+Crea un archivo llamado `.env` en la raíz del proyecto (donde está `manage.py`).
+
+#### Plantilla del archivo `.env`:
 
 ```env
-# Configuración de Django
-SECRET_KEY=tu-clave-secreta-muy-segura-aqui
+# ============================================
+# CONFIGURACIÓN DE DJANGO
+# ============================================
+SECRET_KEY=django-clave-secreta-cambiar-en-produccion
 DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
 
-# Base de datos MySQL
+# ============================================
+# CONFIGURACIÓN DE BASE DE DATOS MYSQL
+# ============================================
 MYSQL_DATABASE=eventsoft
-MYSQL_USER=eventsoft_user
-MYSQL_PASSWORD=tu_contraseña_segura
+MYSQL_USER=root
+MYSQL_PASSWORD=tu_contraseña_de_mysql
 MYSQL_HOST=localhost
 MYSQL_PORT=3306
 
-# Email (opcional para desarrollo)
+# ============================================
+# CONFIGURACIÓN DE EMAIL (Opcional)
+# ============================================
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
 EMAIL_HOST_USER=tu_correo@gmail.com
-EMAIL_HOST_PASSWORD=tu_contraseña_de_aplicacion
+EMAIL_HOST_PASSWORD=contraseña_de_aplicacion
 DEFAULT_FROM_EMAIL=tu_correo@gmail.com
 
-# Brevo API (opcional, para envío de emails en producción)
+# Para producción con Brevo (descomentar):
 # BREVO_API_KEY=tu_api_key_de_brevo
+```
+
+---
+
+### 📖 Explicación de cada Variable de Entorno
+
+#### 🔧 Variables de Django
+
+| Variable | Descripción | Ejemplo | ¿Dónde obtenerla? |
+|----------|-------------|---------|-------------------|
+| `SECRET_KEY` | Clave secreta para seguridad de Django | `mi-clave-super-secreta-123` | Inventa una cadena larga y aleatoria. Para desarrollo puedes dejar el valor por defecto. |
+| `DEBUG` | Modo de depuración | `True` o `False` | Usa `True` para desarrollo local, `False` para producción. |
+| `ALLOWED_HOSTS` | Dominios permitidos | `localhost,127.0.0.1` | Lista de hosts separados por coma. |
+
+#### 🗄️ Variables de Base de Datos
+
+| Variable | Descripción | Ejemplo | ¿Dónde obtenerla? |
+|----------|-------------|---------|-------------------|
+| `MYSQL_DATABASE` | Nombre de la base de datos | `eventsoft` | El nombre que usaste en `CREATE DATABASE`. |
+| `MYSQL_USER` | Usuario de MySQL | `root` | Si usas XAMPP/WAMP, generalmente es `root`. Si creaste un usuario nuevo, usa ese nombre. |
+| `MYSQL_PASSWORD` | Contraseña del usuario MySQL | `mi_contraseña` | **XAMPP:** Por defecto está vacía (dejar vacío). **WAMP:** Por defecto está vacía. **MySQL instalado:** La contraseña que configuraste al instalar. |
+| `MYSQL_HOST` | Servidor de MySQL | `localhost` | Para desarrollo local siempre es `localhost` o `127.0.0.1`. |
+| `MYSQL_PORT` | Puerto de MySQL | `3306` | Por defecto es `3306`. XAMPP a veces usa `3307`. Verifica en tu instalación. |
+
+#### 📧 Variables de Email (Opcionales)
+
+| Variable | Descripción | Ejemplo | ¿Dónde obtenerla? |
+|----------|-------------|---------|-------------------|
+| `EMAIL_HOST` | Servidor SMTP | `smtp.gmail.com` | Depende de tu proveedor de email. |
+| `EMAIL_PORT` | Puerto SMTP | `587` | Gmail usa `587`. |
+| `EMAIL_HOST_USER` | Tu correo electrónico | `mi_correo@gmail.com` | Tu dirección de email. |
+| `EMAIL_HOST_PASSWORD` | Contraseña de aplicación | `xxxx xxxx xxxx xxxx` | **NO es tu contraseña de Gmail.** Ver instrucciones abajo. |
+| `DEFAULT_FROM_EMAIL` | Remitente por defecto | `mi_correo@gmail.com` | Mismo correo que `EMAIL_HOST_USER`. |
+| `BREVO_API_KEY` | API Key de Brevo | `xkeysib-xxx...` | Solo para producción. Crear cuenta en [brevo.com](https://brevo.com). |
+
+---
+
+### 📧 ¿Cómo obtener la contraseña de aplicación de Gmail?
+
+Gmail no permite usar tu contraseña normal para aplicaciones. Debes crear una "Contraseña de Aplicación":
+
+1. Ve a [myaccount.google.com](https://myaccount.google.com)
+2. Ir a **Seguridad** → **Verificación en 2 pasos** (debe estar activada)
+3. Al final de esa página, busca **"Contraseñas de aplicaciones"**
+4. Selecciona "Otro" y escribe "EventSoft"
+5. Google te dará una contraseña de 16 caracteres (ej: `hbqp ctml okwd wueg`)
+6. Esa es la que pones en `EMAIL_HOST_PASSWORD`
+
+> ⚠️ Si no tienes verificación en 2 pasos activada, primero debes activarla.
+
+> 💡 **Para desarrollo:** Puedes omitir la configuración de email. El sistema funcionará pero no enviará correos.
+
+---
+
+### 🔍 ¿Cómo saber mi contraseña de MySQL?
+
+Depende de cómo instalaste MySQL:
+
+| Instalación | Usuario por defecto | Contraseña por defecto |
+|-------------|---------------------|------------------------|
+| **XAMPP** | `root` | *(vacía - no poner nada)* |
+| **WAMP** | `root` | *(vacía - no poner nada)* |
+| **MySQL Installer (Windows)** | `root` | La que elegiste durante la instalación |
+| **MySQL (Linux)** | `root` | La que configuraste con `mysql_secure_installation` |
+
+**Si no recuerdas tu contraseña de MySQL:**
+- En XAMPP/WAMP: Reinstala o usa phpMyAdmin para resetearla
+- En MySQL directo: Busca "reset mysql root password" para tu sistema operativo
+
+---
+
+### 📝 Ejemplo de archivo `.env` completo (desarrollo con XAMPP)
+
+```env
+# Django
+SECRET_KEY=clave-secreta-para-desarrollo-local-12345
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+# Base de datos (XAMPP con contraseña vacía)
+MYSQL_DATABASE=eventsoft
+MYSQL_USER=root
+MYSQL_PASSWORD=
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+
+# Email (opcional - comentado)
+# EMAIL_HOST=smtp.gmail.com
+# EMAIL_PORT=587
+# EMAIL_HOST_USER=
+# EMAIL_HOST_PASSWORD=
+# DEFAULT_FROM_EMAIL=
 ```
 
 > ⚠️ **Importante:** Nunca subas el archivo `.env` al repositorio. Ya está incluido en `.gitignore`.
 
-### 🔄 Paso 5: Ejecutar Migraciones
+---
+
+### 🔄 Paso 6: Ejecutar Migraciones
 
 ```bash
 python manage.py makemigrations
 python manage.py migrate
 ```
 
-### 👤 Paso 6: Crear Super Usuario
+### 👤 Paso 7: Crear Super Usuario
 
 ```bash
 python manage.py createsuperuser
@@ -203,7 +323,7 @@ python manage.py createsuperuser
 
 Sigue las instrucciones para crear el usuario administrador.
 
-### ▶️ Paso 7: Ejecutar el Servidor de Desarrollo
+### ▶️ Paso 8: Ejecutar el Servidor de Desarrollo
 
 ```bash
 python manage.py runserver
