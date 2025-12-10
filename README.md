@@ -82,9 +82,10 @@ Sistema web desarrollado en Django para la gestión integral de eventos académi
    - Abrir el navegador web
    - Ir a: https://danielito09.pythonanywhere.com
 
-2. **Iniciar sesión como Super Administrador:**
-   - Usuario: `admin`
-   - Contraseña: `admin123` *(o la configurada durante el despliegue)*
+2. **Solicitar acceso como Administrador:**
+   - Para obtener credenciales de Super Administrador o crear un evento, contactar a:
+   - 📧 **dalejandro@gmail.com**
+   - Indicar en el correo el propósito de uso de la plataforma
 
 3. **Flujo básico de uso:**
    
