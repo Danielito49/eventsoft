@@ -29,7 +29,7 @@ Sistema web desarrollado en Django para la gestión integral de eventos académi
 | **Jhonatan Escobar** | Desarrollador |
 | **Yeni Rios** | Desarrolladora |
 | **Daniel Davila** | Desarrollador |
-
+| **Sergio Castaño** | Desarrollador |
 ---
 
 ## 🎭 Roles del Sistema
