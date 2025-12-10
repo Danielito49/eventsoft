@@ -1,29 +1,27 @@
 """
-Backend de email personalizado para usar Brevo (SendinBlue) API.
-Esto permite usar la API HTTP de Brevo en lugar de SMTP,
-lo cual funciona en cuentas gratuitas de PythonAnywhere.
+Backend de email personalizado para usar Brevo API.
+Usa requests directamente para llamar a api.brevo.com
+(que está en la whitelist de PythonAnywhere free tier).
 """
 
-import sib_api_v3_sdk
-from sib_api_v3_sdk.rest import ApiException
+import requests
+import json
 from django.core.mail.backends.base import BaseEmailBackend
 from django.conf import settings
 
 
 class BrevoEmailBackend(BaseEmailBackend):
     """
-    Backend de email que usa la API de Brevo para enviar correos.
+    Backend de email que usa la API REST de Brevo para enviar correos.
+    Usa api.brevo.com directamente (en la whitelist de PythonAnywhere).
     """
+    
+    # URL de la API de Brevo (en la whitelist de PythonAnywhere)
+    API_URL = "https://api.brevo.com/v3/smtp/email"
     
     def __init__(self, fail_silently=False, **kwargs):
         super().__init__(fail_silently=fail_silently, **kwargs)
-        
-        # Configurar la API de Brevo
-        configuration = sib_api_v3_sdk.Configuration()
-        configuration.api_key['api-key'] = getattr(settings, 'BREVO_API_KEY', '')
-        self.api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
-            sib_api_v3_sdk.ApiClient(configuration)
-        )
+        self.api_key = getattr(settings, 'BREVO_API_KEY', '')
         self.default_from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com')
         self.default_from_name = getattr(settings, 'DEFAULT_FROM_NAME', 'EventSoft')
     
@@ -46,17 +44,24 @@ class BrevoEmailBackend(BaseEmailBackend):
     
     def _send(self, message):
         """
-        Envía un mensaje individual usando la API de Brevo.
+        Envía un mensaje individual usando la API REST de Brevo.
         """
         try:
+            # Preparar headers
+            headers = {
+                "accept": "application/json",
+                "api-key": self.api_key,
+                "content-type": "application/json"
+            }
+            
             # Preparar destinatarios
             to_list = [{"email": recipient} for recipient in message.to]
             
-            # Preparar el remitente
-            sender = {
-                "name": self.default_from_name,
-                "email": message.from_email or self.default_from_email
-            }
+            # Preparar el remitente - extraer email limpio
+            from_email = message.from_email or self.default_from_email
+            # Si el from_email tiene formato "Nombre <email@domain.com>", extraer solo el email
+            if '<' in from_email and '>' in from_email:
+                from_email = from_email.split('<')[1].split('>')[0]
             
             # Determinar si el contenido es HTML
             html_content = None
@@ -75,30 +80,50 @@ class BrevoEmailBackend(BaseEmailBackend):
             else:
                 text_content = message.body
             
-            # Crear el objeto de email
-            send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
-                to=to_list,
-                sender=sender,
-                subject=message.subject,
-                html_content=html_content,
-                text_content=text_content
-            )
+            # Construir el payload
+            payload = {
+                "sender": {
+                    "name": self.default_from_name,
+                    "email": from_email
+                },
+                "to": to_list,
+                "subject": message.subject
+            }
+            
+            # Agregar contenido (HTML o texto)
+            if html_content:
+                payload["htmlContent"] = html_content
+            if text_content:
+                payload["textContent"] = text_content
             
             # Agregar CC si existe
             if message.cc:
-                send_smtp_email.cc = [{"email": cc} for cc in message.cc]
+                payload["cc"] = [{"email": cc} for cc in message.cc]
             
             # Agregar BCC si existe
             if message.bcc:
-                send_smtp_email.bcc = [{"email": bcc} for bcc in message.bcc]
+                payload["bcc"] = [{"email": bcc} for bcc in message.bcc]
             
-            # Enviar el email
-            self.api_instance.send_transac_email(send_smtp_email)
-            return True
+            # Enviar la petición a la API de Brevo
+            response = requests.post(
+                self.API_URL,
+                headers=headers,
+                data=json.dumps(payload),
+                timeout=30
+            )
             
-        except ApiException as e:
+            # Verificar respuesta
+            if response.status_code in [200, 201, 202]:
+                return True
+            else:
+                error_msg = f"Error Brevo API: {response.status_code} - {response.text}"
+                if not self.fail_silently:
+                    raise Exception(error_msg)
+                return False
+                
+        except requests.exceptions.RequestException as e:
             if not self.fail_silently:
-                raise Exception(f"Error al enviar email via Brevo: {e}")
+                raise Exception(f"Error de conexión con Brevo API: {e}")
             return False
         except Exception as e:
             if not self.fail_silently:
