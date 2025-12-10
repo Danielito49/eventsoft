@@ -148,13 +148,24 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'daviladani888@gmail.com')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', 'hbqp ctml okwd wueg')
+# Configuración de Email
+# En producción usa Brevo API, en desarrollo usa SMTP de Gmail
+BREVO_API_KEY = os.getenv('BREVO_API_KEY', '')
+
+if BREVO_API_KEY:
+    # Usar Brevo en producción (funciona en PythonAnywhere gratis)
+    EMAIL_BACKEND = 'pr_eventsoft.email_backend.BrevoEmailBackend'
+else:
+    # Usar SMTP en desarrollo local
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+    EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+    EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
+    EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'daviladani888@gmail.com')
+    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', 'hbqp ctml okwd wueg')
+
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'daviladani888@gmail.com')
+DEFAULT_FROM_NAME = os.getenv('DEFAULT_FROM_NAME', 'EventSoft')
 
 # Configuración de seguridad para producción
 if not DEBUG:
