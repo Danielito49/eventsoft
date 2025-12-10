@@ -9,6 +9,7 @@ urlpatterns = [
     path('eliminar-item/<int:criterio_id>/', views.eliminar_item, name='eliminar_item_evaluador'),
     path('lista-participantes-evaluador/<int:eve_id>/', views.lista_participantes, name='lista_participantes_evaluador'),
     path('calificar-participante/<int:eve_id>/<int:participante_id>/', views.calificar_participante, name='calificar_participante_evaluador'),
+    path('calificar-proyecto/<int:eve_id>/<int:proyecto_id>/', views.calificar_proyecto, name='calificar_proyecto_evaluador'),
     path('tabla-posiciones/<int:eve_id>/', views.ver_tabla_posiciones, name='tabla_posiciones_evaluador'),
     path('informacion-detallada/<int:eve_id>/', views.informacion_detallada, name='informacion_detallada_evaluador'),
     path('evento-cancelar-evaluador/<int:evento_id>/', views.cancelar_inscripcion_evaluador, name='cancelar_inscripcion_evaluador'),

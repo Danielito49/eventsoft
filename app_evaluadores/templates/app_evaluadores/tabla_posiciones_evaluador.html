@@ -5,49 +5,143 @@
     <h2 class="mb-4 text-center">Tabla de Posiciones - "{{ evento.eve_nombre }}"</h2>
 
     <div class="mb-4 text-center">
-        <a href="{% url 'dashboard_evaluador' %}" class="btn btn-secondary btn-sm">
-            Volver al Dashboard
+        <a href="{% url 'dashboard_evaluador' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left me-1"></i>Volver al Dashboard
         </a>
     </div>
 
-    <div class="table-responsive">
-        <table class="table table-hover table-striped align-middle">
-            <thead class="table-dark">
-                <tr class="text-center">
-                    <th>Posición</th>
-                    <th>Nombre del Participante</th>
-                    <th>Correo</th>
-                    <th>Puntaje Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for p in posiciones %}
-                <tr class="text-center 
-                    {% if forloop.counter == 1 %}table-warning
-                    {% elif forloop.counter == 2 %}table-info
-                    {% elif forloop.counter == 3 %}table-success
-                    {% endif %}">
-                    <td>
-                        <strong>#{{ forloop.counter }}</strong>
-                        {% if forloop.counter == 1 %}
-                            🥇
-                        {% elif forloop.counter == 2 %}
-                            🥈
-                        {% elif forloop.counter == 3 %}
-                            🥉
-                        {% endif %}
-                    </td>
-                    <td>{{ p.participante.usuario.first_name }} {{ p.participante.usuario.last_name }}</td>
-                    <td>{{ p.participante.usuario.email }}</td>
-                    <td><strong>{{ p.puntaje }}</strong></td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="4" class="text-center">No hay participantes calificados aún.</td>
-                </tr>
+    <!-- Tabs para alternar entre proyectos e individuales -->
+    {% if tiene_proyectos or tiene_individuales %}
+    <ul class="nav nav-tabs mb-4" id="posicionesTab" role="tablist">
+        {% if tiene_proyectos %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="proyectos-tab" data-bs-toggle="tab" data-bs-target="#proyectos" 
+                    type="button" role="tab" aria-controls="proyectos" aria-selected="true">
+                <i class="bi bi-people-fill me-1"></i>Proyectos Grupales
+                <span class="badge bg-primary ms-1">{{ posiciones_proyectos|length }}</span>
+            </button>
+        </li>
+        {% endif %}
+        {% if tiene_individuales %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if not tiene_proyectos %}active{% endif %}" id="individuales-tab" data-bs-toggle="tab" 
+                    data-bs-target="#individuales" type="button" role="tab" aria-controls="individuales" 
+                    aria-selected="{% if not tiene_proyectos %}true{% else %}false{% endif %}">
+                <i class="bi bi-person-fill me-1"></i>Participantes Individuales
+                <span class="badge bg-success ms-1">{{ posiciones_individuales|length }}</span>
+            </button>
+        </li>
+        {% endif %}
+    </ul>
+    {% endif %}
+
+    <div class="tab-content" id="posicionesTabContent">
+        <!-- Tab Proyectos Grupales -->
+        {% if tiene_proyectos %}
+        <div class="tab-pane fade show active" id="proyectos" role="tabpanel" aria-labelledby="proyectos-tab">
+            <div class="accordion" id="accordionPosicionesProyectos">
+                {% for item in posiciones_proyectos %}
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingPos{{ forloop.counter }}">
+                        <button class="accordion-button {% if forloop.counter > 3 %}collapsed{% endif %}" type="button" 
+                                data-bs-toggle="collapse" data-bs-target="#collapsePos{{ forloop.counter }}" 
+                                aria-expanded="{% if forloop.counter <= 3 %}true{% else %}false{% endif %}">
+                            <div class="d-flex justify-content-between align-items-center w-100 me-3">
+                                <div>
+                                    <span class="me-3">
+                                        <strong>#{{ forloop.counter }}</strong>
+                                        {% if forloop.counter == 1 %}🥇
+                                        {% elif forloop.counter == 2 %}🥈
+                                        {% elif forloop.counter == 3 %}🥉
+                                        {% endif %}
+                                    </span>
+                                    <strong>{{ item.proyecto.nombre_proyecto }}</strong>
+                                    <span class="badge bg-secondary ms-2">{{ item.integrantes|length }} integrantes</span>
+                                </div>
+                                <div>
+                                    <span class="badge bg-{% if forloop.counter == 1 %}warning text-dark{% elif forloop.counter == 2 %}info{% elif forloop.counter == 3 %}success{% else %}primary{% endif %} fs-6">
+                                        {{ item.puntaje }} pts
+                                    </span>
+                                </div>
+                            </div>
+                        </button>
+                    </h2>
+                    <div id="collapsePos{{ forloop.counter }}" class="accordion-collapse collapse {% if forloop.counter <= 3 %}show{% endif %}" 
+                         aria-labelledby="headingPos{{ forloop.counter }}">
+                        <div class="accordion-body">
+                            {% if item.proyecto.descripcion_proyecto %}
+                            <p class="text-muted mb-3"><strong>Descripción:</strong> {{ item.proyecto.descripcion_proyecto }}</p>
+                            {% endif %}
+                            <h6>Integrantes del equipo:</h6>
+                            <ul class="list-group">
+                                {% for integrante in item.integrantes %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>{{ integrante.participante.usuario.first_name }} {{ integrante.participante.usuario.last_name }}</strong>
+                                        <br><small class="text-muted">{{ integrante.participante.usuario.email }}</small>
+                                    </div>
+                                    {% if integrante.es_lider_proyecto %}
+                                    <span class="badge bg-primary"><i class="bi bi-star-fill me-1"></i>Líder</span>
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
                 {% endfor %}
-            </tbody>
-        </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Tab Participantes Individuales -->
+        {% if tiene_individuales %}
+        <div class="tab-pane fade {% if not tiene_proyectos %}show active{% endif %}" id="individuales" role="tabpanel" aria-labelledby="individuales-tab">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped align-middle">
+                    <thead class="table-dark">
+                        <tr class="text-center">
+                            <th>Posición</th>
+                            <th>Nombre del Participante</th>
+                            <th>Correo</th>
+                            <th>Puntaje Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in posiciones_individuales %}
+                        <tr class="text-center 
+                            {% if forloop.counter == 1 %}table-warning
+                            {% elif forloop.counter == 2 %}table-info
+                            {% elif forloop.counter == 3 %}table-success
+                            {% endif %}">
+                            <td>
+                                <strong>#{{ forloop.counter }}</strong>
+                                {% if forloop.counter == 1 %}🥇
+                                {% elif forloop.counter == 2 %}🥈
+                                {% elif forloop.counter == 3 %}🥉
+                                {% endif %}
+                            </td>
+                            <td>{{ p.participante.usuario.first_name }} {{ p.participante.usuario.last_name }}</td>
+                            <td>{{ p.participante.usuario.email }}</td>
+                            <td><strong>{{ p.puntaje }}</strong></td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center">No hay participantes calificados aún.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
     </div>
+
+    {% if not tiene_proyectos and not tiene_individuales %}
+    <div class="alert alert-info text-center">
+        <i class="bi bi-info-circle me-2"></i>
+        No hay participantes ni proyectos calificados aún en este evento.
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

@@ -2,41 +2,163 @@
 
 {% block content %}
 <div class="container mt-4">
-    <h2>Participantes en "{{ evento.eve_nombre }}"</h2>
-
-    {% if participantes %}
-        <table class="table table-striped mt-3">
-            <thead>
-                <tr>
-                    <th>Nombre</th>
-                    <th>Correo</th>
-                    <th>Acción</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for p in participantes %}
-                <tr>
-                    <td>{{ p.participante.usuario.first_name }}</td>
-                    <td>{{ p.participante.usuario.email }}</td>
-                    <td>
-                        {% if p.participante.id not in calificados %}
-                            <a href="{% url 'calificar_participante_evaluador' evento.eve_id p.participante.id %}" class="btn btn-primary btn-sm">Calificar</a>
-                        {% else %}
-                            <button class="btn btn-secondary btn-sm" disabled>Ya Calificado</button>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% else %}
-        <div class="alert alert-info mt-3" role="alert">
-            Todavía no hay participantes inscritos en este evento.
-        </div>
+    <h2>Calificar en "{{ evento.eve_nombre }}"</h2>
+    
+    {% if es_multidisciplinario and categoria_evaluador %}
+    <div class="alert alert-info mb-4">
+        <i class="bi bi-bookmark-star me-2"></i>
+        <strong>Tu categoría de evaluación:</strong> {{ categoria_evaluador.cat_nombre }}
+        <br><small class="text-muted">Solo se muestran participantes y proyectos de esta categoría</small>
+    </div>
     {% endif %}
 
-    <div class="mb-3">
-        <a href="{% url 'dashboard_evaluador' %}" class="btn btn-secondary btn-sm">Volver</a>
+    <!-- SECCIÓN: Proyectos Grupales -->
+    {% if proyectos_con_integrantes %}
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="bi bi-people-fill me-2"></i>Proyectos Grupales</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3">
+                <small><i class="bi bi-info-circle me-1"></i>Al calificar un proyecto, la nota se aplica automáticamente a todos los integrantes del grupo.</small>
+            </p>
+            
+            <div class="accordion" id="accordionProyectos">
+                {% for item in proyectos_con_integrantes %}
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading{{ item.proyecto.id }}">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                data-bs-target="#collapse{{ item.proyecto.id }}" aria-expanded="false">
+                            <div class="d-flex justify-content-between align-items-center w-100 me-3">
+                                <div>
+                                    <strong>{{ item.proyecto.nombre_proyecto }}</strong>
+                                    <span class="badge bg-secondary ms-2">{{ item.integrantes|length }} integrantes</span>
+                                    {% if item.proyecto.nota_proyecto %}
+                                    <span class="badge bg-success ms-2">Nota: {{ item.proyecto.nota_proyecto }}</span>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    {% if item.calificado %}
+                                    <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Calificado</span>
+                                    {% else %}
+                                    <span class="badge bg-warning text-dark"><i class="bi bi-clock me-1"></i>Pendiente</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </button>
+                    </h2>
+                    <div id="collapse{{ item.proyecto.id }}" class="accordion-collapse collapse" 
+                         aria-labelledby="heading{{ item.proyecto.id }}" data-bs-parent="#accordionProyectos">
+                        <div class="accordion-body">
+                            {% if item.proyecto.descripcion_proyecto %}
+                            <p class="text-muted"><strong>Descripción:</strong> {{ item.proyecto.descripcion_proyecto }}</p>
+                            {% endif %}
+                            
+                            <h6 class="mt-3">Integrantes del equipo:</h6>
+                            <ul class="list-group mb-3">
+                                {% for integrante in item.integrantes %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>{{ integrante.participante.usuario.first_name }} {{ integrante.participante.usuario.last_name }}</strong>
+                                        <br><small class="text-muted">{{ integrante.participante.usuario.email }}</small>
+                                    </div>
+                                    {% if integrante.es_lider_proyecto %}
+                                    <span class="badge bg-primary"><i class="bi bi-star-fill me-1"></i>Líder</span>
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            
+                            {% if not item.calificado %}
+                            <a href="{% url 'calificar_proyecto_evaluador' evento.eve_id item.proyecto.id %}" 
+                               class="btn btn-primary">
+                                <i class="bi bi-pencil-square me-1"></i>Calificar Proyecto
+                            </a>
+                            {% else %}
+                            <a href="{% url 'calificar_proyecto_evaluador' evento.eve_id item.proyecto.id %}" 
+                               class="btn btn-outline-primary">
+                                <i class="bi bi-pencil me-1"></i>Editar Calificación
+                            </a>
+                            {% endif %}
+                            
+                            {% if item.proyecto.archivo_proyecto %}
+                            <a href="{{ item.proyecto.archivo_proyecto.url }}" class="btn btn-outline-secondary ms-2" target="_blank">
+                                <i class="bi bi-file-earmark-arrow-down me-1"></i>Descargar Proyecto
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- SECCIÓN: Participantes Individuales -->
+    {% if participantes_individuales %}
+    <div class="card mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="bi bi-person-fill me-2"></i>Participantes Individuales</h5>
+        </div>
+        <div class="card-body">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Correo</th>
+                        <th>Nota</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in participantes_individuales %}
+                    <tr>
+                        <td>{{ p.participante.usuario.first_name }} {{ p.participante.usuario.last_name }}</td>
+                        <td>{{ p.participante.usuario.email }}</td>
+                        <td>
+                            {% if p.par_eve_valor %}
+                            <span class="badge bg-success">{{ p.par_eve_valor }}</span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if p.participante.id not in calificados_individuales %}
+                                <a href="{% url 'calificar_participante_evaluador' evento.eve_id p.participante.id %}" 
+                                   class="btn btn-primary btn-sm">
+                                    <i class="bi bi-pencil-square me-1"></i>Calificar
+                                </a>
+                            {% else %}
+                                <a href="{% url 'calificar_participante_evaluador' evento.eve_id p.participante.id %}" 
+                                   class="btn btn-outline-primary btn-sm">
+                                    <i class="bi bi-pencil me-1"></i>Editar
+                                </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not proyectos_con_integrantes and not participantes_individuales %}
+    <div class="alert alert-info mt-3" role="alert">
+        <i class="bi bi-info-circle me-2"></i>
+        {% if es_multidisciplinario and categoria_evaluador %}
+        No hay participantes ni proyectos aprobados en tu categoría de evaluación.
+        {% else %}
+        Todavía no hay participantes ni proyectos inscritos en este evento.
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="mt-4">
+        <a href="{% url 'dashboard_evaluador' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left me-1"></i>Volver al Panel
+        </a>
     </div>
 </div>
 {% endblock %}

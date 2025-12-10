@@ -67,7 +67,6 @@ def detalle_evento(request, eve_id):
         'categorias': categorias,
     })
 
-
 def compartir_evento_visitante(request, eve_id):
     evento = get_object_or_404(Evento, pk=eve_id)
 
@@ -119,51 +118,33 @@ def compartir_evento_visitante(request, eve_id):
 def inscripcion_asistente(request, eve_id):
     return registro_evento(request, eve_id, 'asistente')
 
-def inscribirse_participante(request, eve_id):
-    messages.error(request, "El registro de participantes solo está disponible mediante código de invitación.")
-    return redirect('ver_eventos')
-
-def inscribirse_evaluador(request, eve_id):
-    messages.error(request, "El registro de evaluadores solo está disponible mediante código de invitación.")
-    return redirect('ver_eventos')
-
 
 def registro_con_codigo(request, codigo):
-    """Vista para manejar registro con código de invitación"""
-    # Buscar el código de invitación
     codigo_invitacion = get_object_or_404(
         CodigoInvitacionEvento,
         codigo=codigo,
         estado='activo'
     )
-    
     evento = codigo_invitacion.evento
-    tipo = codigo_invitacion.tipo
-    
-    # Verificar que el evento esté activo
+    tipo = codigo_invitacion.tipo  
     if evento.eve_estado.lower() not in ['aprobado', 'inscripciones cerradas']:
         messages.error(request, "Este evento no está disponible para inscripciones.")
         return redirect('ver_eventos')
-    
     if request.method == "POST":
-        # Marcar el código como usado
-        codigo_invitacion.estado = 'usado'
-        codigo_invitacion.fecha_uso = timezone.now()
-        codigo_invitacion.save()
-        
-        # Procesar el registro normalmente pero con email prefijado
-        return procesar_registro_con_codigo(request, evento.eve_id, tipo, codigo_invitacion.email_destino)
-    
+        # No marcar como usado aquí - se marcará solo cuando el registro sea exitoso
+        return procesar_registro_con_codigo(request, evento.eve_id, tipo, codigo_invitacion.email_destino, codigo)    
     return render(request, f'inscribirse_{tipo}.html', {
         'evento': evento,
         'codigo_invitacion': codigo_invitacion,
         'email_prefijado': codigo_invitacion.email_destino,
-        'categorias_evento': evento.eventocategoria_set.all()  # Para eventos multidisciplinarios
+        'categorias_evento': evento.eventocategoria_set.all()
     })
 
 
-def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
+def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado, codigo):
+
     """Función que procesa el registro con código, solo para evaluadores y participantes"""
+
     evento = Evento.objects.filter(eve_id=eve_id).first()
     if not evento:
         messages.error(request, "Evento no encontrado")
@@ -177,13 +158,14 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
         correo = email_prefijado  # Email prefijado del código
         telefono = request.POST.get('par_telefono')
         archivo = request.FILES.get('documentos')
-        
-        # Nuevos campos para proyecto grupal
         tipo_participacion = request.POST.get('tipo_participacion', 'individual')
         nombre_proyecto = request.POST.get('nombre_proyecto', '')
         descripcion_proyecto = request.POST.get('descripcion_proyecto', '')
         es_lider_proyecto = request.POST.get('es_lider_proyecto') == '1'
         archivo_proyecto = request.FILES.get('archivo_proyecto')
+        
+        # Categorías para eventos multidisciplinarios
+        categorias_participacion_ids = request.POST.getlist('categorias_participacion[]')
         
         # Campos de miembros del equipo (solo si es líder)
         miembros_documentos = request.POST.getlist('miembro_documento[]') if es_lider_proyecto else []
@@ -199,8 +181,6 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
         correo = email_prefijado  # Email prefijado del código
         telefono = request.POST.get('eva_telefono')
         archivo = request.FILES.get('documentacion')
-        
-        # Nuevo campo para categoría en eventos multidisciplinarios
         categoria_evaluacion_id = request.POST.get('categoria_evaluacion')
         
     else:
@@ -210,42 +190,46 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
     # Validación básica
     if not (documento and nombres and apellidos):
         messages.error(request, "Por favor completa todos los campos obligatorios.")
-        return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+        return redirect('registro_con_codigo', codigo=codigo)
     
     # Validaciones específicas
     if tipo == 'participante' and tipo_participacion == 'grupal' and not nombre_proyecto:
         messages.error(request, "Para proyectos grupales, el nombre del proyecto es obligatorio.")
-        return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+        return redirect('registro_con_codigo', codigo=codigo)
+    
+    if tipo == 'participante' and evento.eve_es_multidisciplinario == 'Si' and not categorias_participacion_ids:
+        messages.error(request, "Para eventos multidisciplinarios, debes seleccionar al menos una categoría de participación.")
+        return redirect('registro_con_codigo', codigo=codigo)
     
     if tipo == 'evaluador' and evento.eve_es_multidisciplinario == 'Si' and not categoria_evaluacion_id:
         messages.error(request, "Para eventos multidisciplinarios, debes seleccionar una categoría para evaluar.")
-        return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+        return redirect('registro_con_codigo', codigo=codigo)
     
     # Validaciones para miembros del equipo
     if tipo == 'participante' and es_lider_proyecto and tipo_participacion == 'grupal':
         # Verificar que todos los miembros tengan datos completos
         if len(miembros_documentos) != len(miembros_correos) or len(miembros_documentos) != len(miembros_nombres) or len(miembros_documentos) != len(miembros_apellidos):
             messages.error(request, "Todos los miembros del equipo deben tener documento, correo, nombres y apellidos.")
-            return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+            return redirect('registro_con_codigo', codigo=codigo)
         
         for i, (doc, email, nom, ape) in enumerate(zip(miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos)):
             if not (doc.strip() and email.strip() and nom.strip() and ape.strip()):
                 messages.error(request, f"El miembro {i+1} tiene campos incompletos. Todos los campos marcados como obligatorios son requeridos.")
-                return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+                return redirect('registro_con_codigo', codigo=codigo)
         
         # Verificar que no haya documentos o correos duplicados entre miembros
         if len(set(miembros_documentos)) != len(miembros_documentos):
             messages.error(request, "No puede haber documentos duplicados entre los miembros del equipo.")
-            return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+            return redirect('registro_con_codigo', codigo=codigo)
         
         if len(set(miembros_correos)) != len(miembros_correos):
             messages.error(request, "No puede haber correos duplicados entre los miembros del equipo.")
-            return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+            return redirect('registro_con_codigo', codigo=codigo)
         
         # Verificar que el líder no esté en la lista de miembros
         if documento in miembros_documentos or correo in miembros_correos:
             messages.error(request, "El líder del proyecto no puede estar listado como miembro adicional.")
-            return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+            return redirect('registro_con_codigo', codigo=codigo)
     
     # Continuar con el proceso normal de registro usando el sistema existente
     # Pero con el correo prefijado del código de invitación
@@ -259,7 +243,7 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                 "Los datos no coinciden con un usuario existente. "
                 "Si ya tienes cuenta, verifica que los datos sean exactamente iguales."
             )
-            return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
+            return redirect('registro_con_codigo', codigo=codigo)
     
     # Validar que no esté inscrito en el mismo evento (en cualquier rol)
     ya_inscrito = False
@@ -330,9 +314,13 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                         evento=evento,
                         archivo_proyecto=archivo_proyecto if es_lider_proyecto else None
                     )
+                    # Asignar categorías al proyecto grupal si es evento multidisciplinario
+                    if evento.eve_es_multidisciplinario == 'Si' and categorias_participacion_ids:
+                        categorias_objs = Categoria.objects.filter(cat_codigo__in=categorias_participacion_ids)
+                        proyecto_grupal.categorias.set(categorias_objs)
             
             # Crear participación del líder
-            ParticipanteEvento.objects.get_or_create(
+            participante_evento, created = ParticipanteEvento.objects.get_or_create(
                 participante=participante,
                 evento=evento,
                 defaults={
@@ -345,6 +333,11 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     'es_lider_proyecto': es_lider_proyecto if tipo_participacion == 'grupal' else False
                 }
             )
+            
+            # Asignar categorías al participante individual si es evento multidisciplinario y no es grupal
+            if created and evento.eve_es_multidisciplinario == 'Si' and categorias_participacion_ids and tipo_participacion == 'individual':
+                categorias_objs = Categoria.objects.filter(cat_codigo__in=categorias_participacion_ids)
+                participante_evento.categorias.set(categorias_objs)
             
             # Procesar miembros del equipo si es líder de proyecto grupal
             if es_lider_proyecto and tipo_participacion == 'grupal' and miembros_documentos and proyecto_grupal:
@@ -370,6 +363,12 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     'categoria_evaluacion': categoria_obj
                 }
             )
+        
+        # Marcar código como usado solo cuando el registro es exitoso
+        codigo_invitacion = CodigoInvitacionEvento.objects.get(codigo=codigo)
+        codigo_invitacion.estado = 'usado'
+        codigo_invitacion.fecha_uso = timezone.now()
+        codigo_invitacion.save()
         
         messages.success(request, f"Te has registrado exitosamente como {tipo} en el evento {evento.eve_nombre}.")
         return redirect('ver_eventos')
@@ -405,9 +404,13 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                         evento=evento,
                         archivo_proyecto=archivo_proyecto if es_lider_proyecto else None
                     )
+                    # Asignar categorías al proyecto grupal si es evento multidisciplinario
+                    if evento.eve_es_multidisciplinario == 'Si' and categorias_participacion_ids:
+                        categorias_objs = Categoria.objects.filter(cat_codigo__in=categorias_participacion_ids)
+                        proyecto_grupal.categorias.set(categorias_objs)
             
             # Crear participación del líder
-            ParticipanteEvento.objects.get_or_create(
+            participante_evento, created = ParticipanteEvento.objects.get_or_create(
                 participante=participante,
                 evento=evento,
                 defaults={
@@ -420,6 +423,11 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     'es_lider_proyecto': es_lider_proyecto if tipo_participacion == 'grupal' else False
                 }
             )
+            
+            # Asignar categorías al participante individual si es evento multidisciplinario y no es grupal
+            if created and evento.eve_es_multidisciplinario == 'Si' and categorias_participacion_ids and tipo_participacion == 'individual':
+                categorias_objs = Categoria.objects.filter(cat_codigo__in=categorias_participacion_ids)
+                participante_evento.categorias.set(categorias_objs)
             
             # Procesar miembros del equipo si es líder de proyecto grupal
             if es_lider_proyecto and tipo_participacion == 'grupal' and miembros_documentos and proyecto_grupal:
@@ -445,6 +453,12 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     'categoria_evaluacion': categoria_obj
                 }
             )
+        
+        # Marcar código como usado solo cuando el registro es exitoso
+        codigo_invitacion = CodigoInvitacionEvento.objects.get(codigo=codigo)
+        codigo_invitacion.estado = 'usado'
+        codigo_invitacion.fecha_uso = timezone.now()
+        codigo_invitacion.save()
         
         messages.success(request, f"Tu cuenta ha sido activada y te has registrado como {tipo} en el evento {evento.eve_nombre}.")
         return redirect('ver_eventos')
@@ -488,9 +502,13 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                         evento=evento,
                         archivo_proyecto=archivo_proyecto if es_lider_proyecto else None
                     )
+                    # Asignar categorías al proyecto grupal si es evento multidisciplinario
+                    if evento.eve_es_multidisciplinario == 'Si' and categorias_participacion_ids:
+                        categorias_objs = Categoria.objects.filter(cat_codigo__in=categorias_participacion_ids)
+                        proyecto_grupal.categorias.set(categorias_objs)
             
             # Crear participación del líder
-            ParticipanteEvento.objects.create(
+            participante_evento = ParticipanteEvento.objects.create(
                 participante=participante,
                 evento=evento,
                 par_eve_fecha_hora=timezone.now(),
@@ -501,6 +519,11 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                 proyecto_grupal=proyecto_grupal,
                 es_lider_proyecto=es_lider_proyecto if tipo_participacion == 'grupal' else False
             )
+            
+            # Asignar categorías al participante individual si es evento multidisciplinario y no es grupal
+            if evento.eve_es_multidisciplinario == 'Si' and categorias_participacion_ids and tipo_participacion == 'individual':
+                categorias_objs = Categoria.objects.filter(cat_codigo__in=categorias_participacion_ids)
+                participante_evento.categorias.set(categorias_objs)
             
             # Procesar miembros del equipo si es líder de proyecto grupal
             if es_lider_proyecto and tipo_participacion == 'grupal' and miembros_documentos and proyecto_grupal:
@@ -545,6 +568,12 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
         )
         email.content_subtype = 'html'
         email.send()
+        
+        # Marcar código como usado solo cuando el registro es exitoso
+        codigo_invitacion = CodigoInvitacionEvento.objects.get(codigo=codigo)
+        codigo_invitacion.estado = 'usado'
+        codigo_invitacion.fecha_uso = timezone.now()
+        codigo_invitacion.save()
         
         messages.success(request, f"¡Registro completado! Se ha enviado un correo con tus credenciales de acceso.")
         return redirect('ver_eventos')
@@ -1123,6 +1152,9 @@ def procesar_inscripcion_directa(request, evento, tipo):
         es_lider_proyecto = request.POST.get('es_lider_proyecto') == '1'
         archivo_proyecto = request.FILES.get('archivo_proyecto')
         
+        # Campos de categorías para eventos multidisciplinarios
+        categorias_participacion_ids = request.POST.getlist('categorias_participacion[]')
+        
         # Campos de miembros del equipo (solo si es líder)
         miembros_documentos = request.POST.getlist('miembro_documento[]') if es_lider_proyecto else []
         miembros_correos = request.POST.getlist('miembro_correo[]') if es_lider_proyecto else []
@@ -1153,6 +1185,11 @@ def procesar_inscripcion_directa(request, evento, tipo):
     # Validaciones específicas
     if tipo == 'participante' and tipo_participacion == 'grupal' and not nombre_proyecto:
         messages.error(request, "Para proyectos grupales, el nombre del proyecto es obligatorio.")
+        return redirect('inscripcion_participante_directo', eve_id=evento.eve_id)
+    
+    # Validación de categorías para participantes en eventos multidisciplinarios
+    if tipo == 'participante' and evento.eve_es_multidisciplinario == 'Si' and not categorias_participacion_ids:
+        messages.error(request, "Para eventos multidisciplinarios, debes seleccionar al menos una categoría de participación.")
         return redirect('inscripcion_participante_directo', eve_id=evento.eve_id)
     
     if tipo == 'evaluador' and evento.eve_es_multidisciplinario == 'Si' and not categoria_evaluacion_id:
@@ -1248,7 +1285,8 @@ def procesar_inscripcion_directa(request, evento, tipo):
                                               es_lider_proyecto if tipo == 'participante' else False,
                                               archivo_proyecto if tipo == 'participante' else None,
                                               categoria_evaluacion_id if tipo == 'evaluador' else None,
-                                              miembros_data=(miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos, miembros_telefonos) if tipo == 'participante' and es_lider_proyecto else None)
+                                              miembros_data=(miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos, miembros_telefonos) if tipo == 'participante' and es_lider_proyecto else None,
+                                              categorias_participacion_ids=categorias_participacion_ids if tipo == 'participante' else None)
         
         elif usuario and not usuario.is_active:
             # Usuario existe pero está inactivo - reactivar
@@ -1261,7 +1299,8 @@ def procesar_inscripcion_directa(request, evento, tipo):
                                               es_lider_proyecto if tipo == 'participante' else False,
                                               archivo_proyecto if tipo == 'participante' else None,
                                               categoria_evaluacion_id if tipo == 'evaluador' else None,
-                                              miembros_data=(miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos, miembros_telefonos) if tipo == 'participante' and es_lider_proyecto else None)
+                                              miembros_data=(miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos, miembros_telefonos) if tipo == 'participante' and es_lider_proyecto else None,
+                                              categorias_participacion_ids=categorias_participacion_ids if tipo == 'participante' else None)
         
         else:
             # Crear nuevo usuario
@@ -1282,7 +1321,8 @@ def procesar_inscripcion_directa(request, evento, tipo):
                                               es_lider_proyecto if tipo == 'participante' else False,
                                               archivo_proyecto if tipo == 'participante' else None,
                                               categoria_evaluacion_id if tipo == 'evaluador' else None,
-                                              miembros_data=(miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos, miembros_telefonos) if tipo == 'participante' and es_lider_proyecto else None)
+                                              miembros_data=(miembros_documentos, miembros_correos, miembros_nombres, miembros_apellidos, miembros_telefonos) if tipo == 'participante' and es_lider_proyecto else None,
+                                              categorias_participacion_ids=categorias_participacion_ids if tipo == 'participante' else None)
             
             # Enviar correo de confirmación
             _enviar_correo_confirmacion_directo(usuario, evento, tipo)
@@ -1294,7 +1334,8 @@ def procesar_inscripcion_directa(request, evento, tipo):
 def _crear_relacion_evento_rol_directo(usuario, evento, tipo, archivo, tipo_participacion=None, 
                                       nombre_proyecto=None, descripcion_proyecto=None, 
                                       es_lider_proyecto=False, archivo_proyecto=None, 
-                                      categoria_evaluacion_id=None, miembros_data=None):
+                                      categoria_evaluacion_id=None, miembros_data=None,
+                                      categorias_participacion_ids=None):
     """Función auxiliar para crear relaciones evento-rol en inscripción directa"""
     # Asignar rol si no lo tiene
     rol = Rol.objects.filter(nombre__iexact=tipo).first()
@@ -1321,9 +1362,13 @@ def _crear_relacion_evento_rol_directo(usuario, evento, tipo, archivo, tipo_part
                     evento=evento,
                     archivo_proyecto=archivo_proyecto if es_lider_proyecto else None
                 )
+                # Asignar categorías al proyecto grupal si es evento multidisciplinario
+                if categorias_participacion_ids and evento.eve_es_multidisciplinario == 'Si':
+                    categorias_objs = Categoria.objects.filter(cat_codigo__in=categorias_participacion_ids)
+                    proyecto_grupal.categorias.set(categorias_objs)
         
         # Crear participación del líder
-        ParticipanteEvento.objects.get_or_create(
+        participante_evento, created = ParticipanteEvento.objects.get_or_create(
             participante=participante,
             evento=evento,
             defaults={
@@ -1336,6 +1381,11 @@ def _crear_relacion_evento_rol_directo(usuario, evento, tipo, archivo, tipo_part
                 'es_lider_proyecto': es_lider_proyecto if tipo_participacion == 'grupal' else False
             }
         )
+        
+        # Asignar categorías al participante individual si es evento multidisciplinario y NO es grupal
+        if created and categorias_participacion_ids and evento.eve_es_multidisciplinario == 'Si' and tipo_participacion != 'grupal':
+            categorias_objs = Categoria.objects.filter(cat_codigo__in=categorias_participacion_ids)
+            participante_evento.categorias.set(categorias_objs)
         
         # Procesar miembros del equipo si es líder de proyecto grupal
         if es_lider_proyecto and tipo_participacion == 'grupal' and miembros_data and proyecto_grupal:

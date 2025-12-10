@@ -18,9 +18,9 @@ from .models import AdministradorEvento, CodigoInvitacionAdminEvento, CodigoInvi
 from app_eventos.models import Evento
 from app_eventos.models import EventoCategoria
 from app_areas.models import Area, Categoria
-from app_participantes.models import ParticipanteEvento, Participante
+from app_participantes.models import ParticipanteEvento, Participante, ProyectoGrupal
 from app_asistentes.models import AsistenteEvento
-from app_evaluadores.models import Criterio, Calificacion
+from app_evaluadores.models import Criterio, Calificacion, CalificacionProyecto
 from app_evaluadores.models import EvaluadorEvento, Evaluador
 from app_usuarios.models import Usuario
 from app_asistentes.models import Asistente, AsistenteEvento
@@ -577,10 +577,40 @@ def detalle_asistente(request, eve_id, asistente_id):
 @user_passes_test(es_administrador_evento, login_url='ver_eventos')
 def gestion_participantes(request, eve_id):
     evento = get_object_or_404(Evento, pk=eve_id)
-    participantes = ParticipanteEvento.objects.filter(evento=evento, confirmado=True).select_related('participante')
+    participantes_evento = ParticipanteEvento.objects.filter(
+        evento=evento, 
+        confirmado=True
+    ).select_related('participante__usuario', 'proyecto_grupal')
+    
+    # Separar proyectos grupales e individuales
+    proyectos_dict = {}
+    participantes_individuales = []
+    
+    for pe in participantes_evento:
+        if pe.proyecto_grupal:
+            proyecto = pe.proyecto_grupal
+            if proyecto.id not in proyectos_dict:
+                proyectos_dict[proyecto.id] = {
+                    'proyecto': proyecto,
+                    'integrantes': [],
+                    'lider': None,
+                    'estado': pe.par_eve_estado  # Estado del primer integrante
+                }
+            proyectos_dict[proyecto.id]['integrantes'].append(pe)
+            if pe.es_lider_proyecto:
+                proyectos_dict[proyecto.id]['lider'] = pe
+        else:
+            participantes_individuales.append(pe)
+    
+    # Convertir dict a lista
+    proyectos_grupales = list(proyectos_dict.values())
+    
     context = {
         'evento': evento,
-        'participantes': participantes,
+        'proyectos_grupales': proyectos_grupales,
+        'participantes_individuales': participantes_individuales,
+        'tiene_proyectos': len(proyectos_grupales) > 0,
+        'tiene_individuales': len(participantes_individuales) > 0,
         'eve_id': eve_id,
     }
     return render(request, 'gestion_participantes.html', context)
@@ -591,72 +621,191 @@ def gestion_participantes(request, eve_id):
 def detalle_participante(request, eve_id, participante_id):
     evento = get_object_or_404(Evento, pk=eve_id)
     participante = get_object_or_404(Participante, pk=participante_id)
-    participante_evento = ParticipanteEvento.objects.select_related('participante__usuario', 'evento')\
-        .filter(evento=evento, participante=participante).first()
+    participante_evento = ParticipanteEvento.objects.select_related(
+        'participante__usuario', 'evento', 'proyecto_grupal'
+    ).filter(evento=evento, participante=participante).first()
+    
     if not participante_evento:
         messages.error(request, "Participante no encontrado en este evento")
         return redirect('ver_participantes_evento', eve_id=eve_id)
+    
+    # Determinar si es proyecto grupal
+    es_proyecto_grupal = participante_evento.proyecto_grupal is not None
+    proyecto = participante_evento.proyecto_grupal
+    integrantes = []
+    
+    if es_proyecto_grupal:
+        integrantes = ParticipanteEvento.objects.filter(
+            proyecto_grupal=proyecto,
+            evento=evento
+        ).select_related('participante__usuario').order_by('-es_lider_proyecto', 'participante__usuario__first_name')
+    
     if request.method == 'POST':
         nuevo_estado = request.POST.get('estado')
         if nuevo_estado:
-            usuario = participante.usuario
-            enviar_qr = False
-            if nuevo_estado == 'Aprobado':
-                if not participante_evento.par_eve_qr:
-                    data_qr = f"Participante: {usuario.first_name} {usuario.last_name} - Evento: {evento.eve_nombre}"
-                    img = qrcode.make(data_qr)
-                    buffer = io.BytesIO()
-                    img.save(buffer, format='PNG')
-                    file_name = f"qr_{get_random_string(8)}.png"
-                    participante_evento.par_eve_qr.save(file_name, ContentFile(buffer.getvalue()), save=False)
-                    enviar_qr = True
-                else:
-                    enviar_qr = True
-                participante_evento.par_eve_estado = nuevo_estado
-                participante_evento.save()
-                messages.success(request, "Inscripción aprobada")
-            elif nuevo_estado == 'Pendiente':
-                if participante_evento.par_eve_qr:
-                    participante_evento.par_eve_qr.delete(save=False)
-                    participante_evento.par_eve_qr = None
-                participante_evento.par_eve_estado = nuevo_estado
-                participante_evento.save()
-                messages.info(request, "Estado restablecido a pendiente y QR eliminado")
-            elif nuevo_estado == 'Rechazado':
-                participante_evento.delete()
-                otros_eventos = ParticipanteEvento.objects.filter(participante=participante).exists()
-                if not otros_eventos:
-                    participante.delete()
-                    messages.warning(request, "Inscripción rechazada y participante eliminado completamente")
+            if es_proyecto_grupal:
+                # Procesar todos los integrantes del proyecto
+                if nuevo_estado == 'Aprobado':
+                    # Actualizar estado del proyecto
+                    proyecto.estado = nuevo_estado
+                    proyecto.save()
+                    
+                    for integrante in integrantes:
+                        usuario = integrante.participante.usuario
+                        if not integrante.par_eve_qr:
+                            data_qr = f"Participante: {usuario.first_name} {usuario.last_name} - Proyecto: {proyecto.nombre_proyecto} - Evento: {evento.eve_nombre}"
+                            img = qrcode.make(data_qr)
+                            buffer = io.BytesIO()
+                            img.save(buffer, format='PNG')
+                            file_name = f"qr_{get_random_string(8)}.png"
+                            integrante.par_eve_qr.save(file_name, ContentFile(buffer.getvalue()), save=False)
+                        integrante.par_eve_estado = nuevo_estado
+                        integrante.save()
+                        
+                        # Enviar correo a cada integrante
+                        if usuario and usuario.email:
+                            cuerpo_html = render_to_string('correo_estado_participante.html', {
+                                'evento': evento,
+                                'participante': usuario,
+                                'nuevo_estado': nuevo_estado,
+                                'proyecto': proyecto,
+                            })
+                            email = EmailMessage(
+                                subject=f'Actualización de estado de tu inscripción como participante en {evento.eve_nombre}',
+                                body=cuerpo_html,
+                                to=[usuario.email],
+                            )
+                            email.content_subtype = 'html'
+                            if integrante.par_eve_qr:
+                                qr_path = integrante.par_eve_qr.path
+                                email.attach_file(qr_path)
+                            email.send(fail_silently=True)
+                    
+                    messages.success(request, f"Proyecto '{proyecto.nombre_proyecto}' aprobado. Se aprobaron {integrantes.count()} integrantes y se enviaron los códigos QR.")
+                
+                elif nuevo_estado == 'Pendiente':
+                    # Actualizar estado del proyecto
+                    proyecto.estado = nuevo_estado
+                    proyecto.save()
+                    
+                    for integrante in integrantes:
+                        if integrante.par_eve_qr:
+                            integrante.par_eve_qr.delete(save=False)
+                            integrante.par_eve_qr = None
+                        integrante.par_eve_estado = nuevo_estado
+                        integrante.save()
+                    messages.info(request, f"Proyecto '{proyecto.nombre_proyecto}' restablecido a pendiente. Se actualizaron {integrantes.count()} integrantes.")
+                
+                elif nuevo_estado == 'Rechazado':
+                    # Eliminar todos los integrantes del proyecto
+                    for integrante in integrantes:
+                        usuario_integrante = integrante.participante.usuario
+                        participante_obj = integrante.participante
+                        integrante.delete()
+                        
+                        # Verificar si el participante está en otros eventos
+                        otros_eventos = ParticipanteEvento.objects.filter(participante=participante_obj).exists()
+                        if not otros_eventos:
+                            participante_obj.delete()
+                        
+                        # Enviar correo de rechazo
+                        if usuario_integrante and usuario_integrante.email:
+                            cuerpo_html = render_to_string('correo_estado_participante.html', {
+                                'evento': evento,
+                                'participante': usuario_integrante,
+                                'nuevo_estado': nuevo_estado,
+                                'proyecto': proyecto,
+                            })
+                            email = EmailMessage(
+                                subject=f'Actualización de estado de tu inscripción como participante en {evento.eve_nombre}',
+                                body=cuerpo_html,
+                                to=[usuario_integrante.email],
+                            )
+                            email.content_subtype = 'html'
+                            email.send(fail_silently=True)
+                    
+                    # Eliminar el proyecto
+                    proyecto.delete()
+                    messages.warning(request, f"Proyecto rechazado y eliminado junto con todos sus integrantes.")
                     return redirect('ver_participantes_evento', eve_id=eve_id)
-                else:
-                    messages.warning(request, "Inscripción rechazada y eliminado del evento")
+            
+            else:
+                # Lógica original para participantes individuales
+                usuario = participante.usuario
+                if nuevo_estado == 'Aprobado':
+                    if not participante_evento.par_eve_qr:
+                        data_qr = f"Participante: {usuario.first_name} {usuario.last_name} - Evento: {evento.eve_nombre}"
+                        img = qrcode.make(data_qr)
+                        buffer = io.BytesIO()
+                        img.save(buffer, format='PNG')
+                        file_name = f"qr_{get_random_string(8)}.png"
+                        participante_evento.par_eve_qr.save(file_name, ContentFile(buffer.getvalue()), save=False)
+                    participante_evento.par_eve_estado = nuevo_estado
+                    participante_evento.save()
+                    messages.success(request, "Inscripción aprobada")
+                    
+                    # Enviar correo al participante
+                    if usuario and usuario.email:
+                        cuerpo_html = render_to_string('correo_estado_participante.html', {
+                            'evento': evento,
+                            'participante': usuario,
+                            'nuevo_estado': nuevo_estado,
+                        })
+                        email = EmailMessage(
+                            subject=f'Actualización de estado de tu inscripción como participante en {evento.eve_nombre}',
+                            body=cuerpo_html,
+                            to=[usuario.email],
+                        )
+                        email.content_subtype = 'html'
+                        if participante_evento.par_eve_qr:
+                            qr_path = participante_evento.par_eve_qr.path
+                            email.attach_file(qr_path)
+                        email.send(fail_silently=True)
+                
+                elif nuevo_estado == 'Pendiente':
+                    if participante_evento.par_eve_qr:
+                        participante_evento.par_eve_qr.delete(save=False)
+                        participante_evento.par_eve_qr = None
+                    participante_evento.par_eve_estado = nuevo_estado
+                    participante_evento.save()
+                    messages.info(request, "Estado restablecido a pendiente y QR eliminado")
+                
+                elif nuevo_estado == 'Rechazado':
+                    usuario_participante = participante.usuario
+                    participante_evento.delete()
+                    otros_eventos = ParticipanteEvento.objects.filter(participante=participante).exists()
+                    
+                    # Enviar correo de rechazo
+                    if usuario_participante and usuario_participante.email:
+                        cuerpo_html = render_to_string('correo_estado_participante.html', {
+                            'evento': evento,
+                            'participante': usuario_participante,
+                            'nuevo_estado': nuevo_estado,
+                        })
+                        email = EmailMessage(
+                            subject=f'Actualización de estado de tu inscripción como participante en {evento.eve_nombre}',
+                            body=cuerpo_html,
+                            to=[usuario_participante.email],
+                        )
+                        email.content_subtype = 'html'
+                        email.send(fail_silently=True)
+                    
+                    if not otros_eventos:
+                        participante.delete()
+                        messages.warning(request, "Inscripción rechazada y participante eliminado completamente")
+                    else:
+                        messages.warning(request, "Inscripción rechazada y eliminado del evento")
                     return redirect('ver_participantes_evento', eve_id=eve_id)
-
-            # Enviar correo al participante
-            usuario_participante = participante.usuario
-            if usuario_participante and usuario_participante.email:
-                cuerpo_html = render_to_string('correo_estado_participante.html', {
-                    'evento': evento,
-                    'participante': usuario_participante,
-                    'nuevo_estado': nuevo_estado,
-                })
-                email = EmailMessage(
-                    subject=f'Actualización de estado de tu inscripción como participante en {evento.eve_nombre}',
-                    body=cuerpo_html,
-                    to=[usuario_participante.email],
-                )
-                email.content_subtype = 'html'
-                if nuevo_estado == 'Aprobado' and participante_evento.par_eve_qr:
-                    qr_path = participante_evento.par_eve_qr.path
-                    email.attach_file(qr_path)
-                email.send(fail_silently=True)
 
             return redirect('detalle_participante_evento', eve_id=eve_id, participante_id=participante_id)
+    
     return render(request, 'detalle_participante.html', {
         'participante': participante_evento,
         'evento': evento,
         'eve_id': eve_id,
+        'es_proyecto_grupal': es_proyecto_grupal,
+        'proyecto': proyecto,
+        'integrantes': integrantes,
     })
 
 
@@ -1009,14 +1158,58 @@ def ver_tabla_posiciones(request, eve_id):
     if evento.eve_estado.lower() != 'aprobado':
         messages.error(request, "Solo puedes acceder a esta función si el evento está aprobado.")
         return redirect('listar_eventos')
+    
     criterios = Criterio.objects.filter(cri_evento_fk=evento)
     peso_total = sum(c.cri_peso for c in criterios) or 1
+    
+    # Separar entre proyectos grupales e individuales
     participantes_evento = ParticipanteEvento.objects.filter(
         evento=evento,
         par_eve_estado='Aprobado'
-    ).select_related('participante')
-    posiciones = []
+    ).select_related('participante', 'proyecto_grupal')
+    
+    # Proyectos grupales únicos
+    proyectos_dict = {}
+    participantes_individuales = []
+    
     for pe in participantes_evento:
+        if pe.proyecto_grupal:
+            proyecto = pe.proyecto_grupal
+            if proyecto.id not in proyectos_dict:
+                proyectos_dict[proyecto.id] = proyecto
+        else:
+            participantes_individuales.append(pe)
+    
+    # Calcular posiciones de proyectos grupales
+    posiciones_proyectos = []
+    for proyecto_id, proyecto in proyectos_dict.items():
+        # Obtener calificaciones del proyecto
+        calificaciones_proyecto = CalificacionProyecto.objects.select_related('criterio').filter(
+            proyecto=proyecto,
+            criterio__cri_evento_fk=evento
+        )
+        evaluadores = set(c.evaluador_id for c in calificaciones_proyecto)
+        num_evaluadores = len(evaluadores)
+        
+        if num_evaluadores > 0:
+            puntaje_ponderado = sum(
+                c.cal_valor * c.criterio.cri_peso for c in calificaciones_proyecto
+            ) / (peso_total * num_evaluadores)
+        else:
+            puntaje_ponderado = 0
+        
+        integrantes = proyecto.obtener_integrantes()
+        posiciones_proyectos.append({
+            'proyecto': proyecto,
+            'integrantes': integrantes,
+            'puntaje': round(puntaje_ponderado, 2)
+        })
+    
+    posiciones_proyectos.sort(key=lambda x: x['puntaje'], reverse=True)
+    
+    # Calcular posiciones de participantes individuales
+    posiciones_individuales = []
+    for pe in participantes_individuales:
         participante = pe.participante
         calificaciones = Calificacion.objects.select_related('criterio').filter(
             participante=participante,
@@ -1024,20 +1217,28 @@ def ver_tabla_posiciones(request, eve_id):
         )
         evaluadores = set(c.evaluador_id for c in calificaciones)
         num_evaluadores = len(evaluadores)
+        
         if num_evaluadores > 0:
             puntaje_ponderado = sum(
                 c.cal_valor * c.criterio.cri_peso for c in calificaciones
             ) / (peso_total * num_evaluadores)
         else:
             puntaje_ponderado = 0
-        posiciones.append({
+        
+        posiciones_individuales.append({
             'participante': participante,
+            'participante_evento': pe,
             'puntaje': round(puntaje_ponderado, 2)
         })
-    posiciones.sort(key=lambda x: x['puntaje'], reverse=True)
+    
+    posiciones_individuales.sort(key=lambda x: x['puntaje'], reverse=True)
+    
     return render(request, 'tabla_posiciones.html', {
         'evento': evento,
-        'posiciones': posiciones
+        'posiciones_proyectos': posiciones_proyectos,
+        'posiciones_individuales': posiciones_individuales,
+        'tiene_proyectos': len(posiciones_proyectos) > 0,
+        'tiene_individuales': len(posiciones_individuales) > 0,
     })
 
 

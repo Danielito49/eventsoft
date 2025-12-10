@@ -1,10 +1,9 @@
 {% extends "base.html" %}
 {% load static %}
-{% load evento_filters %}
 {% block extra_meta %}
 <meta name="csrf-token" content="{{ csrf_token }}">
 {% endblock %}
-{% block content %}
+{% block extra_css %}
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap');
 
@@ -13,7 +12,6 @@
         background-color: #f8f9fa;
     }
 
-    /* Título principal */
     .page-title {
         color: #007832;
         font-weight: 700;
@@ -28,7 +26,6 @@
         margin-bottom: 2rem;
     }
 
-    /* Mejoras en los filtros */
     .filters-container {
         background: white;
         border-radius: 16px;
@@ -73,7 +70,6 @@
         box-shadow: 0 4px 12px rgba(0, 120, 50, 0.3);
     }
 
-    /* Mejoras en las tarjetas de eventos */
     .event-card {
         border: none;
         border-radius: 18px;
@@ -150,7 +146,6 @@
         box-shadow: 0 4px 12px rgba(57, 169, 0, 0.3);
     }
 
-    /* Estado vacío mejorado */
     .empty-state {
         text-align: center;
         padding: 3rem 2rem;
@@ -176,7 +171,6 @@
         margin-bottom: 1.5rem;
     }
 
-    /* Contador de eventos */
     .events-counter {
         background: linear-gradient(135deg, #39A900 0%, #007832 100%);
         color: white;
@@ -197,8 +191,6 @@
         opacity: 0.9;
         font-weight: 500;
     }
-
-    /* Responsive */
     @media (max-width: 768px) {
         .page-title {
             font-size: 2rem;
@@ -208,15 +200,21 @@
         }
     }
 </style>
+{% endblock %}
 
+{% block content %}
 <div class="container my-5">
-    <!-- Título y contador -->
     <div class="row align-items-center mb-4">
         <div class="col-md-8">
             <h1 class="page-title">Eventos Académicos</h1>
             <p class="page-subtitle">Descubre conferencias, seminarios y talleres de excelencia</p>
         </div>
         <div class="col-md-4">
+            <div class="d-flex justify-content-end mb-2">
+                <a href="{% static 'manuales/manual-visitante-web.pdf' %}" target="_blank" class="btn btn-outline-success btn-sm rounded-pill">
+                    <i class="bi bi-book me-1"></i> Manual de Usuario
+                </a>
+            </div>
             <div class="events-counter">
                 <span class="counter-number">{{ eventos|length }}</span>
                 <span class="counter-label">evento{{ eventos|length|pluralize:"s" }} disponible{{ eventos|length|pluralize:"s" }}</span>
@@ -224,7 +222,6 @@
         </div>
     </div>
 
-    <!-- Filtros mejorados -->
     <div class="filters-container">
         <form method="GET" class="mb-0">
             <div class="row g-3 align-items-end">
@@ -276,7 +273,6 @@
             </div>
         </form>
     </div>
-    <!-- Resultados -->
     {% if eventos %}
         <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
             {% for evento in eventos %}
@@ -348,7 +344,6 @@
     {% endif %}
 </div>
 
-<!-- Modal para Compartir Evento -->
 <div class="modal fade" id="modalCompartirVisitante" tabindex="-1" aria-labelledby="modalCompartirVisitanteLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -560,6 +555,6 @@ function compartirXVisitante() {
 }
 </script>
 
-<!-- Bootstrap Icons -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
 {% endblock %}

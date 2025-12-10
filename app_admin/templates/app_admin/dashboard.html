@@ -106,7 +106,12 @@
 </style>
 
 <div class="container mt-5">
-    <h1 class="section-title text-center">Panel Administrativo EventSoft</h1>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="section-title mb-0">Panel Administrativo EventSoft</h1>
+        <a href="{% static 'manuales/manual-super-admin.pdf' %}" target="_blank" class="btn btn-outline-success rounded-pill">
+            <i class="bi bi-book me-1"></i> Manual de Usuario
+        </a>
+    </div>
 
     <div class="row">
         {% for estado, color, icono in estados_tarjetas %}

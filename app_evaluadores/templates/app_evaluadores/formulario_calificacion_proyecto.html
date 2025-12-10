@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-people-fill me-2"></i>Calificar Proyecto Grupal
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <h5 class="alert-heading">{{ proyecto.nombre_proyecto }}</h5>
+                        {% if proyecto.descripcion_proyecto %}
+                        <p class="mb-2">{{ proyecto.descripcion_proyecto }}</p>
+                        {% endif %}
+                        <hr>
+                        <p class="mb-0">
+                            <i class="bi bi-info-circle me-1"></i>
+                            <strong>Nota:</strong> La calificación que asignes se aplicará automáticamente a todos los integrantes del grupo.
+                        </p>
+                    </div>
+                    
+                    <!-- Lista de Integrantes -->
+                    <div class="mb-4">
+                        <h6><i class="bi bi-people me-2"></i>Integrantes del equipo ({{ integrantes|length }}):</h6>
+                        <div class="row">
+                            {% for integrante in integrantes %}
+                            <div class="col-md-6 mb-2">
+                                <div class="d-flex align-items-center p-2 border rounded">
+                                    <i class="bi bi-person-circle fs-4 me-2 text-primary"></i>
+                                    <div>
+                                        <strong>{{ integrante.participante.usuario.first_name }} {{ integrante.participante.usuario.last_name }}</strong>
+                                        {% if integrante.es_lider_proyecto %}
+                                        <span class="badge bg-primary ms-1">Líder</span>
+                                        {% endif %}
+                                        <br>
+                                        <small class="text-muted">{{ integrante.participante.usuario.email }}</small>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    {% if proyecto.archivo_proyecto %}
+                    <div class="mb-4">
+                        <a href="{{ proyecto.archivo_proyecto.url }}" class="btn btn-outline-secondary" target="_blank">
+                            <i class="bi bi-file-earmark-arrow-down me-1"></i>Descargar Archivo del Proyecto
+                        </a>
+                    </div>
+                    {% endif %}
+                    
+                    <hr>
+                    
+                    <h5 class="mb-3"><i class="bi bi-clipboard-check me-2"></i>Criterios de Evaluación</h5>
+                    
+                    <form method="post">
+                        {% csrf_token %}
+                        {% for c in criterios %}
+                        <div class="mb-4 p-3 border rounded bg-light">
+                            <label for="criterio_{{ c.cri_id }}" class="form-label">
+                                <strong>{{ c.cri_descripcion }}</strong>
+                                <span class="badge bg-secondary ms-2">Peso: {{ c.cri_peso }}%</span>
+                            </label>
+                            <select name="criterio_{{ c.cri_id }}" id="criterio_{{ c.cri_id }}" class="form-select" required>
+                                <option value="">Selecciona una calificación</option>
+                                <option value="1">1 - Deficiente</option>
+                                <option value="2">2 - Regular</option>
+                                <option value="3">3 - Bueno</option>
+                                <option value="4">4 - Muy Bueno</option>
+                                <option value="5">5 - Excelente</option>
+                            </select>
+                        </div>
+                        {% endfor %}
+                        
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{% url 'lista_participantes_evaluador' evento.eve_id %}" class="btn btn-secondary">
+                                <i class="bi bi-arrow-left me-1"></i>Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-check-circle me-1"></i>Guardar Calificación del Proyecto
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,6 +1,6 @@
 from django.db import models
 from app_eventos.models import Evento
-from app_participantes.models import Participante
+from app_participantes.models import Participante, ProyectoGrupal
 from app_usuarios.models import Usuario
 from app_areas.models import Categoria
 
@@ -40,6 +40,7 @@ class Criterio(models.Model):
     cri_evento_fk = models.ForeignKey(Evento, on_delete=models.CASCADE, related_name='criterios')
 
 class Calificacion(models.Model):
+    """Calificación para participantes individuales"""
     evaluador = models.ForeignKey(Evaluador, on_delete=models.CASCADE)
     criterio = models.ForeignKey(Criterio, on_delete=models.CASCADE)
     participante = models.ForeignKey(Participante, on_delete=models.CASCADE)
@@ -48,3 +49,18 @@ class Calificacion(models.Model):
 
     class Meta:
         unique_together = (('evaluador', 'criterio', 'participante'),)
+
+
+class CalificacionProyecto(models.Model):
+    """Calificación para proyectos grupales - la nota se aplica a todos los integrantes"""
+    evaluador = models.ForeignKey(Evaluador, on_delete=models.CASCADE)
+    criterio = models.ForeignKey(Criterio, on_delete=models.CASCADE)
+    proyecto = models.ForeignKey(ProyectoGrupal, on_delete=models.CASCADE)
+    cal_valor = models.IntegerField()
+    cal_observacion = models.CharField(max_length=255, blank=True, null=True)
+
+    class Meta:
+        unique_together = (('evaluador', 'criterio', 'proyecto'),)
+
+    def __str__(self):
+        return f"{self.proyecto.nombre_proyecto} - {self.criterio.cri_descripcion}: {self.cal_valor}"

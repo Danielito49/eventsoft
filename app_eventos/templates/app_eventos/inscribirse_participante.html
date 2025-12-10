@@ -51,6 +51,33 @@
                     {% endif %}
                 </div>
                 
+                <!-- Selección de Categoría(s) para eventos multidisciplinarios -->
+                {% if evento.eve_es_multidisciplinario == 'Si' %}
+                <div class="mb-4">
+                    <label class="form-label">Categoría(s) de Participación <span class="text-danger">*</span></label>
+                    <div class="alert alert-info py-2">
+                        <small><i class="bi bi-info-circle me-1"></i>Este es un evento multidisciplinario. Selecciona la(s) categoría(s) en la(s) que participarás.</small>
+                    </div>
+                    <div class="border rounded p-3" style="max-height: 200px; overflow-y: auto;">
+                        {% for ec in categorias_evento %}
+                        <div class="form-check mb-2">
+                            <input class="form-check-input categoria-check" type="checkbox" name="categorias_participacion[]" 
+                                   id="cat_{{ ec.categoria.cat_codigo }}" value="{{ ec.categoria.cat_codigo }}">
+                            <label class="form-check-label" for="cat_{{ ec.categoria.cat_codigo }}">
+                                <strong>{{ ec.categoria.cat_nombre }}</strong>
+                                {% if ec.categoria.cat_descripcion %}
+                                <div class="text-muted small">{{ ec.categoria.cat_descripcion|truncatechars:80 }}</div>
+                                {% endif %}
+                            </label>
+                        </div>
+                        {% empty %}
+                        <p class="text-muted mb-0">No hay categorías disponibles para este evento.</p>
+                        {% endfor %}
+                    </div>
+                    <small class="text-muted">Puedes seleccionar una o más categorías</small>
+                </div>
+                {% endif %}
+                
                 <!-- Tipo de inscripción: Individual vs Grupal -->
                 <div class="mb-4">
                     <label class="form-label">Tipo de Participación <span class="text-danger">*</span></label>

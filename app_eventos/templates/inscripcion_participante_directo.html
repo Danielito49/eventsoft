@@ -103,6 +103,38 @@
                     <div class="form-section">
                         <h5 class="mb-3 text-success">Tipo de Participación</h5>
                         
+                        <!-- Selección de categorías para eventos multidisciplinarios -->
+                        {% if evento.eve_es_multidisciplinario == 'Si' %}
+                        <div class="alert alert-info mb-4">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>Este es un evento multidisciplinario.</strong> Debes seleccionar la(s) categoría(s) en las que participarás.
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label required-field">Categoría(s) de Participación</label>
+                            <div class="row">
+                                {% for ec in categorias_evento %}
+                                <div class="col-md-6">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" 
+                                               name="categorias_participacion[]" 
+                                               value="{{ ec.categoria.cat_codigo }}" 
+                                               id="categoria_{{ ec.categoria.cat_codigo }}">
+                                        <label class="form-check-label" for="categoria_{{ ec.categoria.cat_codigo }}">
+                                            {{ ec.categoria.cat_nombre }}
+                                            <small class="text-muted d-block">{{ ec.categoria.cat_area_fk.are_nombre }}</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                {% empty %}
+                                <div class="col-12">
+                                    <p class="text-muted">No hay categorías disponibles para este evento.</p>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div class="form-text">Selecciona al menos una categoría en la que deseas participar.</div>
+                        </div>
+                        {% endif %}
+                        
                         <div class="mb-3">
                             <div class="form-check">
                                 <input class="form-check-input" type="radio" name="tipo_participacion" 
