@@ -140,3 +140,15 @@ staticfiles/
 # Archivos temporales
 *.tmp
 *.bak
+
+# Archivos de documentación interna (no subir al repo)
+DEPLOY.md
+contexto.md
+
+# Archivos de media de prueba
+media/participantes/
+media/evaluadores/
+media/asistentes/
+media/eventos/
+media/proyectos/
+media/certificados/
